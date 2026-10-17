@@ -31,13 +31,16 @@ async function main() {
     response.end(body);
   });
   let browser;
+  let browserClosed;
   let socket;
+  let send;
   const watchdog = setTimeout(() => { console.error('Browser checks timed out.'); browser?.kill(); process.exit(1); }, 60000);
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const url = `http://127.0.0.1:${server.address().port}/pace/`;
     browser = spawn(process.env.CHROME_BIN || 'google-chrome', ['--headless', '--no-sandbox',
       '--disable-gpu', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank']);
+    browserClosed = new Promise(resolve => browser.once('close', resolve));
     const endpoint = await new Promise((resolve, reject) => {
       let output = '';
       browser.on('error', reject);
@@ -65,7 +68,7 @@ async function main() {
         data.error ? reject(new Error(JSON.stringify(data.error))) : resolve(data.result);
       }
     });
-    const send = (method, params = {}) => new Promise((resolve, reject) => {
+    send = (method, params = {}) => new Promise((resolve, reject) => {
       const id = ++serial;
       pending.set(id, {resolve, reject});
       socket.send(JSON.stringify({id, method, params}));
@@ -461,12 +464,15 @@ async function main() {
     assert.deepEqual(errors, []);
     console.log('Browser checks passed: deadlines/local time, recent-pace ETA/trends, uninterrupted upgrades, session CRUD, history search/filter/sort, bulk delete/undo, backups/download/import, presets, notes/charts, settings, wake lock, mobile layouts, and offline use.');
   } finally {
+    if (browser && browser.exitCode === null && browser.signalCode === null) {
+      if (send && socket?.readyState === WebSocket.OPEN) {
+        try { await Promise.race([send('Browser.close'), browserClosed]); }
+        catch { browser.kill(); }
+      } else browser.kill();
+    }
+    if (browserClosed) await browserClosed;
     clearTimeout(watchdog);
     if (socket) socket.close();
-    if (browser && browser.exitCode === null) {
-      browser.kill();
-      await new Promise(resolve => browser.once('exit', resolve));
-    }
     server.closeAllConnections();
     server.close();
     // Chrome subprocesses can briefly keep writing after the parent exits.

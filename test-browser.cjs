@@ -262,12 +262,172 @@ async function main() {
       document.getElementById('show-quotes').dispatchEvent(new Event('change'));
     })()`);
 
+    const managed = await evaluate(`(() => {
+      const action = (name, id) => [...el('history-list').querySelectorAll('button')].find(button => button.dataset.action === name && button.dataset.id === id);
+      el('history').open = true; renderHistory(true);
+      const current = sessionId;
+      const originalName = activityName;
+      el('pause').click();
+      action('rename', current).click();
+      if (!el('session-renamer').open || state !== 'running') throw Error('Rename must keep the timer running');
+      el('rename-activity').value = 'Discarded name';
+      el('cancel-rename').dispatchEvent(new KeyboardEvent('keydown', {key:'t',bubbles:true}));
+      if (state !== 'running') throw Error('Shortcuts must not run behind the rename dialog');
+      el('cancel-rename').click();
+      if (activityName !== originalName) throw Error('Cancel rename');
+      action('rename', current).click();
+      const before = elapsed();
+      el('rename-activity').value = 'Geometry revision'; el('rename-form').requestSubmit();
+      if (el('session-renamer').open || activityName !== 'Geometry revision' || state !== 'running' || elapsed() < before) throw Error('Rename current session');
+      if (document.activeElement !== action('rename', current)) throw Error('Rename restores focus');
+      el('pause').click();
+      const archived = sessions.find(saved => saved.state === 'complete');
+      const activeSnapshot = JSON.parse(localStorage.getItem('pace-session'));
+      action('rename', archived.id).click();
+      el('rename-activity').value = '<strong>Finished work</strong>'; el('rename-form').requestSubmit();
+      if (el('history-list').querySelector('h3 strong') || !el('history-list').textContent.includes('<strong>Finished work</strong>')) throw Error('Session names must be plain text');
+      if (sessions.find(saved => saved.id === archived.id).state !== 'complete') throw Error('Rename preserves completion');
+      const activeAfterRename = JSON.parse(localStorage.getItem('pace-session'));
+      if (JSON.stringify({...activeAfterRename, savedAt:activeSnapshot.savedAt}) !== JSON.stringify(activeSnapshot)) throw Error('Archive rename must not replace the active session');
+      const count = sessions.length;
+      const originalConfirm = window.confirm;
+      try {
+        window.confirm = () => false;
+        action('delete', archived.id).click();
+        if (sessions.length !== count) throw Error('Cancel deletion');
+        window.confirm = () => true;
+        action('delete', archived.id).click();
+        if (sessions.length !== count - 1 || action('delete', archived.id) || sessionId !== current) throw Error('Delete archive');
+        if (document.activeElement !== el('new-session')) throw Error('Delete restores focus');
+        if (el('delete-undo').hidden) throw Error('Deletion offers undo');
+        el('undo-delete').click();
+        if (sessions.length !== count || !action('delete', archived.id) || sessionId !== current || !el('delete-undo').hidden) throw Error('Undo archived deletion');
+        action('delete', archived.id).click();
+        action('restart', current).click();
+        const temporary = sessionId;
+        action('delete', temporary).click();
+        render();
+        if (state !== 'ready' || sessionId !== null || localStorage.getItem('pace-session') !== null || sessions.some(saved => saved.id === temporary)) throw Error('Delete current timer');
+        el('undo-delete').click();
+        if (sessionId !== temporary || state !== 'paused' || !action('delete', temporary)) throw Error('Undo restores the current timer paused');
+        action('delete', temporary).click();
+        action('resume', current).click(); el('pause').click();
+        return {archived: archived.id, temporary, name: activityName};
+      } finally { window.confirm = originalConfirm; }
+    })()`);
+
+    const cleaned = await evaluate(`(() => {
+      const base = {version:1, state:'paused', goal:3, unit:'tasks', checkpoints:[0,5000], elapsed:10000, savedAt:Date.now(), notes:'Original cleanup note'};
+      const alpha = {...base, id:'browser-cleanup-alpha', activity:'Cleanup Alpha', createdAt:1000};
+      const beta = {...base, id:'browser-cleanup-beta', activity:'cleanup Beta', state:'stopped', createdAt:500};
+      const complete = {...base, id:'browser-cleanup-done', activity:'Cleanup Done', state:'complete', goal:1, checkpoints:[0,5000], elapsed:5000, createdAt:2000};
+      importBackup({version:1, sessions:[alpha,beta,complete]});
+      const change = (id, value, type = 'change') => { el(id).value = value; el(id).dispatchEvent(new Event(type)); };
+      const shown = () => [...el('history-list').querySelectorAll('article')].map(row => row.dataset.id).join(',');
+      const selectAll = () => { el('select-visible').checked = true; el('select-visible').dispatchEvent(new Event('change')); };
+      change('history-search', '  CLEANUP  ', 'input');
+      if (el('history-list').querySelectorAll('article').length !== 3) throw Error('Search by name');
+      change('history-filter', 'incomplete');
+      change('history-sort', 'oldest');
+      if (shown() !== beta.id + ',' + alpha.id) throw Error('Oldest first with combined search and filter');
+      change('history-sort', 'name');
+      if (shown() !== alpha.id + ',' + beta.id) throw Error('Sort by name');
+      selectAll();
+      if (el('delete-selected').disabled || !el('delete-selected').textContent.includes('(2)')) throw Error('Select shown results');
+      const first = el('history-list').querySelector('input');
+      first.checked = false; first.dispatchEvent(new Event('change', {bubbles:true})); first.focus();
+      render();
+      if (!el('select-visible').indeterminate || document.activeElement !== first || !first.isConnected) throw Error('Partial selection and clock-tick focus');
+      change('history-search', 'no matching session', 'input');
+      if (selectedSessionIds.size || !el('delete-selected').disabled || !el('history-list').textContent.includes('No sessions match')) throw Error('Search clears hidden selection and explains empty results');
+      change('history-search', 'cleanup', 'input'); change('history-filter', 'complete');
+      if (shown() !== complete.id) throw Error('Completion filter');
+      change('history-filter', 'incomplete'); selectAll();
+      const count = sessions.length;
+      const active = sessionId;
+      const originalConfirm = window.confirm;
+      try {
+        window.confirm = () => false; el('delete-selected').click();
+        if (sessions.length !== count || selectedSessionIds.size !== 2) throw Error('Cancel bulk deletion');
+        window.confirm = () => true; el('delete-selected').click();
+        if (sessions.length !== count - 2 || !sessions.some(saved => saved.id === complete.id) || sessionId !== active) throw Error('Bulk deletion is scoped to selection');
+        if (el('delete-undo').hidden || !el('delete-undo-message').textContent.includes('2 sessions')) throw Error('Bulk deletion offers undo');
+        el('undo-delete').click();
+        if (shown() !== alpha.id + ',' + beta.id || sessions.length !== count || sessionId !== active || selectedSessionIds.size) throw Error('Undo entire batch');
+        if (sessions.find(saved => saved.id === beta.id).notes !== base.notes) throw Error('Undo preserves session notes');
+        change('history-search', 'cleanup alpha', 'input');
+        el('history-list').querySelector('button[data-action="rename"]').click();
+        el('rename-activity').value = 'Cleanup renamed'; el('rename-form').requestSubmit();
+        if (shown() || document.activeElement !== el('history-search')) throw Error('Rename restores focus when the session leaves the search results');
+        change('history-search', 'cleanup', 'input');
+        selectAll(); el('delete-selected').click();
+      } finally { window.confirm = originalConfirm; }
+      change('history-search', '', 'input'); change('history-filter', 'all'); change('history-sort', 'newest');
+      return {removed:[alpha.id,beta.id], complete:complete.id};
+    })()`);
+
+    await send('Emulation.setTimezoneOverride', {timezoneId:'Asia/Kolkata'});
+    const forecast = await evaluate(`(() => {
+      const change = (id, value) => { el(id).value = value; el(id).dispatchEvent(new Event('change')); };
+      const original = sessionId;
+      const originalTime = elapsed();
+      const originalDeadline = Math.floor((Date.now() + 3600000) / 60000) * 60000;
+      change('deadline', localDateTime(originalDeadline)); change('eta-mode', 'average');
+      if (deadline !== originalDeadline || new Date().getTimezoneOffset() !== -330) throw Error('Deadline uses local time rather than treating the input as UTC');
+      if (state !== 'paused' || elapsed() !== originalTime) throw Error('Planning changes preserve the timer');
+      const points = [0,100000,200000,300000,400000,500000,520000,540000,560000,580000,600000];
+      const sample = {version:1, id:'browser-pace-plan', activity:'Changing pace', unit:'tasks', goal:13,
+        state:'paused', createdAt:Date.now(), savedAt:Date.now(), checkpoints:points, elapsed:610000,
+        deadline:originalDeadline, etaMode:'recent', notes:'Pace sample'};
+      importBackup({version:1, sessions:[sample]}); resumeSession(sample.id); el('pause').click();
+      if (el('recent-average').textContent !== '00:00:20' || el('average').textContent !== '00:01:00' || el('pace-trend').textContent !== '67% less time') throw Error('Live recent pace and trend');
+      if (el('live-pace-chart').querySelector('polyline').getAttribute('points').split(' ').length !== 10) throw Error('Live pace chart');
+      const recentEta = el('eta').textContent;
+      change('eta-mode', 'average');
+      if (el('eta').textContent === recentEta || !el('estimate-note').textContent.includes('whole-session average')) throw Error('Switch ETA basis');
+      change('deadline', localDateTime(Date.now() + 120000));
+      if (el('deadline-status').textContent !== 'Behind schedule' || !el('deadline-margin').textContent.includes('late')) throw Error('Deadline detects an average-pace shortfall');
+      change('eta-mode', 'recent');
+      if (el('deadline-status').textContent !== 'On track' || el('required-pace').textContent === '—') throw Error('Recent pace updates deadline outlook');
+      el('deadline').focus(); const value = el('deadline').value; render();
+      if (document.activeElement !== el('deadline') || el('deadline').value !== value) throw Error('Clock ticks preserve deadline input focus');
+      change('deadline', localDateTime(Date.now() - 60000));
+      if (el('deadline-status').textContent !== 'Deadline passed') throw Error('Past deadline');
+      el('clear-deadline').click();
+      if (deadline !== null || el('deadline').value || el('deadline-status').textContent !== 'No deadline' || state !== 'paused') throw Error('Clear deadline');
+      const archived = ${JSON.stringify(cleaned.complete)};
+      editSession(archived);
+      el('edit-deadline').value = localDateTime(originalDeadline); el('edit-eta-mode').value = 'average';
+      el('edit-form').requestSubmit();
+      if (sessions.find(saved => saved.id === archived).deadline !== originalDeadline || sessionId !== sample.id) throw Error('Edit archived planning details');
+      el('new-session').click();
+      el('activity').value = 'Deadline finish'; el('goal').value = '1'; el('goal').dispatchEvent(new Event('input'));
+      change('deadline', localDateTime(originalDeadline)); el('session').click(); el('done').click();
+      const firstFinish = completedAt;
+      if (state !== 'complete' || !Number.isFinite(firstFinish) || el('deadline-status').textContent !== 'Met deadline') throw Error('Record actual deadline outcome');
+      editSession(sessionId); el('edit-form').requestSubmit();
+      if (completedAt !== firstFinish) throw Error('Review preserves the recorded finish time');
+      el('undo').click();
+      if (completedAt !== null || state !== 'paused') throw Error('Undo completion clears its finish timestamp');
+      el('pause').click(); el('done').click();
+      const finished = sessions.find(saved => saved.id === sessionId);
+      if (finished.completedAt !== completedAt || finished.deadline !== originalDeadline) throw Error('Completion planning is archived');
+      resumeSession(original); el('pause').click();
+      if (deadline !== originalDeadline || etaMode !== 'average') throw Error('Resuming restores the saved planning choices');
+      const backedUp = createBackup().sessions.find(saved => saved.id === original);
+      if (backedUp.deadline !== originalDeadline || backedUp.etaMode !== 'average') throw Error('Backup includes planning choices');
+      return {deadline:originalDeadline, etaMode:'average'};
+    })()`);
+
     for (const [width, height] of [[320,640], [360,800], [412,915], [915,412]]) {
       await send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor:1, mobile:true});
       assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
       await evaluate('editSession(sessionId)');
       assert.equal(await evaluate('document.getElementById("session-editor").scrollWidth <= document.getElementById("session-editor").clientWidth'), true);
       await evaluate('document.getElementById("session-editor").close()');
+      await evaluate('renameSession(sessionId)');
+      assert.equal(await evaluate('el("session-renamer").scrollWidth <= el("session-renamer").clientWidth'), true);
+      await evaluate('el("session-renamer").close()');
     }
     const savedCount = await evaluate('sessions.length');
     await send('Network.emulateNetworkConditions', {offline:true, latency:0, downloadThroughput:-1, uploadThroughput:-1});
@@ -278,12 +438,28 @@ async function main() {
     assert.equal(await evaluate(`fetch('./icon-192.png').then(response => response.ok)`), true);
     assert.equal(await evaluate('document.getElementById("notes").value.endsWith("Edited")'), true);
     assert.equal(await evaluate('presets.length'), 1);
+    assert.equal(await evaluate('deadline'), forecast.deadline, 'Deadline persists offline');
+    assert.equal(await evaluate('etaMode'), forecast.etaMode, 'ETA basis persists offline');
+    assert.equal(await evaluate('el("deadline").value === localDateTime(deadline)'), true);
+    assert.equal(await evaluate('activityName'), managed.name, 'Renamed sessions persist offline');
+    assert.equal(await evaluate(`sessions.some(saved => [${JSON.stringify(managed.archived)}, ${JSON.stringify(managed.temporary)}].includes(saved.id))`), false, 'Deleted sessions stay deleted after reload');
+    assert.equal(await evaluate(`sessions.some(saved => ${JSON.stringify(cleaned.removed)}.includes(saved.id))`), false, 'Bulk deletion survives an offline reload');
+    await evaluate(`(() => {
+      el('history').open = true; renderHistory(true);
+      const originalConfirm = window.confirm;
+      try {
+        window.confirm = () => true;
+        [...el('history-list').querySelectorAll('button')].find(button => button.dataset.action === 'delete' && button.dataset.id === ${JSON.stringify(cleaned.complete)}).click();
+        el('undo-delete').click();
+        if (!sessions.some(saved => saved.id === ${JSON.stringify(cleaned.complete)} && saved.state === 'complete')) throw Error('Undo works offline');
+      } finally { window.confirm = originalConfirm; }
+    })()`);
     const offlineImport = await evaluate('importBackup(JSON.stringify(createBackup()))');
     assert.equal(offlineImport.sessions, 0, 'Backup round trips work offline without duplication');
     assert.equal(offlineImport.presets, 0);
     assert.equal(await evaluate(`(() => {const before = el('quote').textContent; rotateQuote(); return el('quote').textContent !== before;})()`), true);
     assert.deepEqual(errors, []);
-    console.log('Browser checks passed: uninterrupted upgrades, backups/download/import, presets, notes/chart, settings, wake lock, mobile layouts, and offline use.');
+    console.log('Browser checks passed: deadlines/local time, recent-pace ETA/trends, uninterrupted upgrades, session CRUD, history search/filter/sort, bulk delete/undo, backups/download/import, presets, notes/charts, settings, wake lock, mobile layouts, and offline use.');
   } finally {
     clearTimeout(watchdog);
     if (socket) socket.close();

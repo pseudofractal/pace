@@ -23,6 +23,7 @@ function createApp(localStorage = storage, environment = {}) {
       reportValidity() { return this.validity.valid; },
       addEventListener(name, callback) { this.handlers[name] = callback; },
       click() { if (!this.disabled) this.handlers.click?.(); },
+      focus() {},
       append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } },
       replaceChildren(...children) { this.children = []; this.append(...children); },
       setAttribute(key, value) { this[key] = value; },
@@ -33,7 +34,7 @@ function createApp(localStorage = storage, environment = {}) {
   }
   for (const [, id] of html.matchAll(/id="([^"]+)"/g)) {
     const node = element();
-    node.value = ({ goal: '20', unit: 'units' })[id] || '';
+    node.value = ({ goal: '20', unit: 'units', 'history-filter': 'all', 'history-sort': 'newest', 'eta-mode': 'recent' })[id] || '';
     nodes.set(id, node);
   }
   const context = vm.createContext({
@@ -294,6 +295,7 @@ limited.render();
 assert.equal(JSON.parse(runningStore.get('pace-session')).elapsed, 115000, 'History failure does not stop active-session saving');
 assert.equal(createApp(limitedStorage).node('total').textContent, '00:01:55');
 assert.match(limited.node('storage-status').textContent, /History not saved/);
+assert.equal(run(limited, 'createBackup().sessions.find(saved => saved.id === sessionId).elapsed'), 115000, 'Backup includes the latest active time even when history storage is full');
 
 function memoryStorage(initial = {}) {
   const data = new Map(Object.entries(initial));
@@ -384,7 +386,9 @@ for (const invalid of ['invalid json', '{"version":2}', '{"version":1,"sessions"
   JSON.stringify({...JSON.parse(fullBackup), settings: {quotes: 'yes', sparkles: true, awake: false}}),
   JSON.stringify({...JSON.parse(fullBackup), sessions: [JSON.parse(fullBackup).sessions[0], JSON.parse(fullBackup).sessions[0]]}),
   JSON.stringify({...JSON.parse(fullBackup), presets: [JSON.parse(fullBackup).presets[0], JSON.parse(fullBackup).presets[0]]}),
-  JSON.stringify({...JSON.parse(fullBackup), sessions: [{...legacy, notes: 'x'.repeat(4001)}]})]) {
+  JSON.stringify({...JSON.parse(fullBackup), sessions: [{...legacy, notes: 'x'.repeat(4001)}]}),
+  ...[{deadline: -1}, {deadline: 'tomorrow'}, {deadline: 8640000000000001}, {etaMode: 'unknown'}, {completedAt: wall}]
+    .map(fields => JSON.stringify({version: 1, sessions: [{...legacy, ...fields}]}))]) {
   assert.throws(() => run(importedApp, `importBackup(${JSON.stringify(invalid)})`));
   assert.deepEqual(destination.data, beforeInvalid, 'Invalid imports do not mutate storage');
 }
@@ -424,6 +428,308 @@ assert.equal(run(setupTabA, 'createBackup().presets.length'), 2, 'Backups includ
 setupTabA.click('remove-preset');
 assert.equal(JSON.parse(setupStorage.getItem('pace-presets')).presets.length, 1);
 assert.equal(JSON.parse(setupStorage.getItem('pace-presets')).presets[0].activity, 'Reading');
+
+// Session management preserves timing/state and stays deleted across stale tabs.
+const crudStorage = memoryStorage({
+  'pace-session': JSON.stringify(oldActive),
+  'pace-sessions': JSON.stringify({version: 1, sessions: [oldActive, oldCompleted]}),
+});
+const crud = createApp(crudStorage);
+const staleTab = createApp(crudStorage);
+const archivedBeforeRename = JSON.parse(crudStorage.getItem('pace-sessions')).sessions.find(item => item.id === oldCompleted.id);
+assert.equal(run(crud, 'renameSavedSession("old-complete", "  Finished algebra  ")'), '');
+const archivedAfterRename = JSON.parse(crudStorage.getItem('pace-sessions')).sessions.find(item => item.id === oldCompleted.id);
+assert.deepEqual({...archivedAfterRename, activity: archivedBeforeRename.activity, savedAt: archivedBeforeRename.savedAt}, archivedBeforeRename, 'Rename only changes the name and modification timestamp');
+now += 1234;
+wall += 1234;
+const timeBeforeRename = run(crud, 'elapsed()');
+assert.equal(run(crud, 'renameSavedSession("old-active", "Current algebra")'), '');
+assert.equal(run(crud, 'state'), 'running', 'Renaming a running session never pauses it');
+assert.equal(run(crud, 'elapsed()'), timeBeforeRename);
+assert.equal(crud.node('activity').value, 'Current algebra');
+assert.equal(JSON.parse(crudStorage.getItem('pace-session')).elapsed, timeBeforeRename, 'Rename saves the latest active time');
+staleTab.render();
+assert.equal(staleTab.node('activity').value, 'Current algebra', 'Another open tab does not overwrite the new name');
+assert.equal(createApp(crudStorage).node('activity').value, 'Current algebra', 'Rename survives reopening');
+const beforeInvalidRename = new Map(crudStorage.data);
+assert.match(run(crud, 'renameSavedSession("old-active", "x".repeat(81))'), /80 characters/);
+assert.match(run(crud, 'renameSavedSession("missing", "Name")'), /not found/);
+assert.deepEqual(crudStorage.data, beforeInvalidRename, 'Invalid renames do not change storage');
+const activeBeforeDelete = crudStorage.getItem('pace-session');
+assert.equal(run(crud, 'deleteSavedSessions(["old-complete"])'), '');
+assert.equal(crudStorage.getItem('pace-session'), activeBeforeDelete, 'Deleting an archive leaves the active snapshot untouched');
+staleTab.render();
+assert.equal(JSON.parse(crudStorage.getItem('pace-sessions')).sessions.length, 1, 'A stale tab cannot resurrect deleted archives');
+assert.equal(run(crud, 'createBackup().sessions.length'), 1, 'Deleted sessions are excluded from backups');
+assert.equal(run(crud, 'deleteSavedSessions(["old-active"])'), '');
+crud.render();
+assert.equal(crud.node('status').textContent, 'Ready');
+assert.equal(crud.node('history-count').textContent, '(0)');
+assert.equal(crud.node('total').textContent, '00:00:00');
+assert.equal(crudStorage.getItem('pace-session'), null);
+staleTab.listeners.pagehide();
+assert.equal(run(staleTab, 'state'), 'ready', 'A deleted timer is cleared before another tab can autosave it');
+assert.equal(run(createApp(crudStorage), 'sessions.length'), 0, 'Deleting the last session survives reopening');
+
+// Failed writes, including removal of the active snapshot, leave sessions intact.
+const failureStorage = memoryStorage({
+  'pace-session': JSON.stringify(oldActive),
+  'pace-sessions': JSON.stringify({version: 1, sessions: [oldActive, oldCompleted]}),
+});
+let failingKey = '';
+const failingCrud = createApp({...failureStorage,
+  setItem(key, value) {
+    if (key === failingKey) throw Error('Quota exceeded');
+    failureStorage.setItem(key, value);
+  },
+  removeItem(key) {
+    if (key === failingKey) throw Error('Storage disabled');
+    failureStorage.removeItem(key);
+  },
+});
+const beforeFailedCrud = new Map(failureStorage.data);
+for (const key of ['pace-sessions', 'pace-session']) {
+  failingKey = key;
+  assert.match(run(failingCrud, 'renameSavedSession("old-active", "Lost name")'), /could not be saved/);
+  assert.match(run(failingCrud, 'deleteSavedSessions(["old-active", "old-complete"])'), /could not be deleted/);
+  assert.deepEqual(failureStorage.data, beforeFailedCrud, 'Failed CRUD rolls back storage writes');
+  assert.equal(run(failingCrud, 'state'), 'running');
+  assert.equal(failingCrud.node('activity').value, oldActive.activity);
+  assert.equal(run(failingCrud, 'sessions.length'), 2);
+  assert.equal(run(failingCrud, 'deletionUndo'), null, 'A failed deletion does not create an undo action');
+}
+
+const browseRecords = [
+  {...legacy, id: 'alpha', createdAt: 1000, activity: 'Alpha'},
+  {...legacy, id: 'beta', createdAt: 3000, activity: 'zebra', state: 'stopped'},
+  {...oldCompleted, id: 'done', createdAt: 2000, activity: 'Alpha done'},
+  {...legacy, id: 'untitled', createdAt: 4000, activity: '', state: 'running'},
+];
+const browseStorage = memoryStorage({'pace-sessions': JSON.stringify({version: 1, sessions: browseRecords})});
+const browse = createApp(browseStorage);
+browse.node('history').open = true;
+browse.render();
+assert.equal(run(browse, 'visibleSessions().map(saved => saved.id).join(",")'), 'untitled,beta,done,alpha', 'Default order uses creation dates, not autosave order');
+browse.node('history-sort').value = 'oldest'; browse.node('history-sort').handlers.change();
+assert.equal(run(browse, 'visibleSessions().map(saved => saved.id).join(",")'), 'alpha,done,beta,untitled');
+browse.node('history-sort').value = 'name'; browse.node('history-sort').handlers.change();
+assert.equal(run(browse, 'visibleSessions().map(saved => saved.id).join(",")'), 'alpha,done,untitled,beta');
+browse.node('history-sort').value = 'name-desc'; browse.node('history-sort').handlers.change();
+assert.equal(run(browse, 'visibleSessions().map(saved => saved.id).join(",")'), 'beta,untitled,done,alpha');
+browse.node('history-search').value = '  ALPHA  '; browse.node('history-search').handlers.input();
+assert.equal(run(browse, 'visibleSessions().length'), 2, 'Search is case-insensitive and trims surrounding spaces');
+browse.node('history-filter').value = 'incomplete'; browse.node('history-filter').handlers.change();
+assert.equal(run(browse, 'visibleSessions()[0].id'), 'alpha', 'Search and status filters combine');
+browse.node('history-search').value = ''; browse.node('history-search').handlers.input();
+assert.equal(run(browse, 'visibleSessions().length'), 3);
+for (const [status, id] of [['running', 'untitled'], ['paused', 'alpha'], ['stopped', 'beta'], ['complete', 'done']]) {
+  browse.node('history-filter').value = status; browse.node('history-filter').handlers.change();
+  assert.equal(run(browse, 'visibleSessions().map(saved => saved.id).join(",")'), id);
+}
+browse.node('history-filter').value = 'all'; browse.node('history-filter').handlers.change();
+const firstSelection = browse.node('history-list').querySelectorAll('input')[0];
+firstSelection.checked = true;
+browse.node('history-list').handlers.change({target: firstSelection});
+assert.equal(browse.node('select-visible').indeterminate, true);
+browse.render();
+assert.equal(browse.node('history-list').querySelectorAll('input')[0], firstSelection, 'Clock ticks preserve focused selection controls');
+browse.node('history-sort').value = 'newest'; browse.node('history-sort').handlers.change();
+assert.equal(run(browse, 'selectedSessionIds.size'), 1, 'Sorting preserves selection');
+browse.node('history-filter').value = 'complete'; browse.node('history-filter').handlers.change();
+assert.equal(run(browse, 'selectedSessionIds.size'), 0, 'Changing filters clears hidden selections');
+browse.node('select-visible').checked = true; browse.node('select-visible').handlers.change();
+browse.click('delete-selected');
+assert.deepEqual(JSON.parse(browseStorage.getItem('pace-sessions')).sessions.map(saved => saved.id).sort(), ['alpha', 'beta', 'untitled'], 'Bulk delete only removes selected results');
+assert.equal(browse.node('delete-undo').hidden, false);
+assert.equal(browse.node('delete-selected').disabled, true);
+browse.click('undo-delete');
+assert.equal(JSON.parse(browseStorage.getItem('pace-sessions')).sessions.length, 4);
+assert.equal(browse.node('delete-undo').hidden, true);
+browse.node('history-search').value = 'no match'; browse.node('history-search').handlers.input();
+assert.equal(browse.node('history-results').textContent, 'Showing 0 of 4 sessions');
+assert.match(browse.node('history-list').children[0].textContent, /No sessions match/);
+assert.equal(browse.node('select-visible').disabled, true);
+
+// Undo restores a whole batch and freezes a deleted running timer at deletion time.
+const undoStorage = memoryStorage({
+  'pace-session': JSON.stringify(oldActive),
+  'pace-sessions': JSON.stringify({version: 1, sessions: [oldActive, oldCompleted]}),
+});
+const undoApp = createApp(undoStorage);
+const undoStaleTab = createApp(undoStorage);
+now += 4321; wall += 4321;
+const deletedTime = run(undoApp, 'elapsed()');
+assert.equal(run(undoApp, 'deleteSavedSessions(["old-active", "old-complete"])'), '');
+undoApp.render();
+assert.equal(undoApp.node('history-count').textContent, '(0)');
+assert.match(undoApp.node('delete-undo-message').textContent, /2 sessions/);
+now += 3000; wall += 3000;
+assert.equal(run(undoApp, 'undoSessionDeletion()'), '');
+undoApp.render();
+assert.equal(run(undoApp, 'sessionId'), oldActive.id);
+assert.equal(run(undoApp, 'state'), 'paused');
+assert.equal(run(undoApp, 'elapsed()'), deletedTime, 'The deleted interval is excluded');
+const recovered = JSON.parse(undoStorage.getItem('pace-sessions')).sessions;
+assert.deepEqual(recovered.find(saved => saved.id === oldCompleted.id), {...oldCompleted, savedAt: wall}, 'Completed session details are restored exactly');
+undoStaleTab.render();
+assert.equal(run(undoStaleTab, 'state'), 'paused', 'A stale running tab honors the restored paused state');
+assert.equal(run(undoStaleTab, 'elapsed()'), deletedTime);
+assert.equal(createApp(undoStorage).node('status').textContent, 'Paused');
+assert.equal(run(undoApp, 'deleteSavedSessions(["old-complete"])'), '');
+run(undoApp, `startSession(${JSON.stringify(setup)})`);
+const newActive = undoStorage.getItem('pace-session');
+assert.equal(run(undoApp, 'undoSessionDeletion()'), '');
+assert.equal(undoStorage.getItem('pace-session'), newActive, 'Undo keeps a session started after deletion active');
+assert.equal(run(undoApp, 'deleteSavedSessions(["old-complete"])'), '');
+const independentlyRecovered = JSON.parse(undoStorage.getItem('pace-sessions'));
+independentlyRecovered.sessions.push({...oldCompleted, activity: 'Recovered elsewhere'});
+undoStorage.setItem('pace-sessions', JSON.stringify(independentlyRecovered));
+assert.equal(run(undoApp, 'undoSessionDeletion()'), '');
+assert.equal(JSON.parse(undoStorage.getItem('pace-sessions')).sessions.find(saved => saved.id === oldCompleted.id).activity, 'Recovered elsewhere', 'Undo preserves records already restored or changed elsewhere');
+assert.equal(run(undoApp, 'deleteSavedSessions(["old-complete"])'), '');
+wall += 10000;
+assert.match(run(undoApp, 'undoSessionDeletion()'), /expired/);
+undoApp.render();
+assert.equal(undoApp.node('delete-undo').hidden, true);
+assert.equal(run(undoApp, 'sessions.some(saved => saved.id === "old-complete")'), false);
+
+const restoreStorage = memoryStorage({
+  'pace-session': JSON.stringify(oldActive),
+  'pace-sessions': JSON.stringify({version: 1, sessions: [oldActive, oldCompleted]}),
+});
+let restoreFailure = '';
+const restoreApp = createApp({...restoreStorage, setItem(key, value) {
+  if (key === restoreFailure) throw Error('Quota exceeded');
+  restoreStorage.setItem(key, value);
+}});
+assert.equal(run(restoreApp, 'deleteSavedSessions(["old-active", "old-complete"])'), '');
+const beforeFailedUndo = new Map(restoreStorage.data);
+for (const key of ['pace-sessions', 'pace-session']) {
+  restoreFailure = key;
+  assert.match(run(restoreApp, 'undoSessionDeletion()'), /could not be restored/);
+  assert.deepEqual(restoreStorage.data, beforeFailedUndo, 'A failed undo rolls back all restored records');
+  assert.equal(run(restoreApp, 'state'), 'ready');
+  assert.equal(run(restoreApp, 'deletionUndo.records.length'), 2, 'A failed undo can be retried within its deadline');
+}
+restoreFailure = '';
+assert.equal(run(restoreApp, 'undoSessionDeletion()'), '');
+assert.equal(run(restoreApp, 'sessions.length'), 2);
+
+// Recent estimates adapt to changing pace and never spend future-unit time on an overdue unit.
+const trendPoints = [0, 100000, 200000, 300000, 400000, 500000, 520000, 540000, 560000, 580000, 600000];
+const recentMetrics = run(features, `paceMetrics(${JSON.stringify(trendPoints)}, 610000, 13, 'recent')`);
+const averageMetrics = run(features, `paceMetrics(${JSON.stringify(trendPoints)}, 610000, 13, 'average')`);
+assert.equal(recentMetrics.recent, 20000);
+assert.equal(recentMetrics.average, 60000);
+assert.equal(recentMetrics.remaining, 50000);
+assert.equal(averageMetrics.remaining, 170000);
+assert.ok(recentMetrics.trend < 0);
+const slowingPoints = [0, 20000, 40000, 60000, 80000, 100000, 200000, 300000, 400000, 500000, 600000];
+assert.equal(run(features, `paceMetrics(${JSON.stringify(slowingPoints)}, 610000, 13).remaining`), 290000);
+assert.ok(run(features, `paceMetrics(${JSON.stringify(slowingPoints)}, 610000, 13).trend`) > 0);
+assert.equal(run(features, 'paceMetrics([0], 10000, 3).remaining'), null);
+assert.equal(run(features, 'paceMetrics([0,0,0], 0, 3).trend'), 0, 'Zero-duration records never produce NaN trends');
+assert.equal(run(features, 'paceMetrics([0,60000], 300000, 4).remaining'), 120000);
+assert.equal(run(features, 'paceMetrics([0,60000], 300000, 4).overrun'), true);
+assert.equal(run(features, 'paceMetrics([0,60000], 60000, 1).overrun'), false);
+const outlook = (offset, metrics = recentMetrics, state = 'running', finishedAt = null) => run(features,
+  `deadlineOutlook(${wall + offset}, ${wall}, ${JSON.stringify(metrics)}, ${JSON.stringify(state)}, ${JSON.stringify(finishedAt)})`);
+assert.equal(outlook(180000).required, 60000);
+assert.equal(outlook(180000).margin, 130000);
+assert.equal(outlook(180000).status, 'On track');
+assert.equal(outlook(40000).status, 'Behind schedule');
+assert.equal(outlook(-1).status, 'Deadline passed');
+assert.equal(outlook(300000, run(features, 'paceMetrics([0,60000], 300000, 4)')).status, 'Pace uncertain');
+assert.equal(outlook(180000, run(features, 'paceMetrics([0], 0, 3)')).status, 'Waiting for pace');
+assert.equal(outlook(0, recentMetrics, 'complete', wall).status, 'Met deadline');
+assert.equal(outlook(0, recentMetrics, 'complete', wall + 1).status, 'Finished late');
+assert.equal(outlook(0, recentMetrics, 'complete').margin, null, 'Old completed sessions do not invent a finish timestamp');
+
+const planningRecord = {...legacy, id: 'planning', createdAt: wall, goal: 13, checkpoints: trendPoints,
+  elapsed: 610000, deadline: wall + 180000, etaMode: 'recent', notes: 'Keep the plan'};
+const planningStorage = memoryStorage({
+  'pace-session': JSON.stringify(planningRecord),
+  'pace-sessions': JSON.stringify({version: 1, sessions: [planningRecord]}),
+});
+const planning = createApp(planningStorage);
+const planningTab = createApp(planningStorage);
+assert.equal(planning.node('recent-average').textContent, '00:00:20');
+assert.equal(planning.node('pace-trend').textContent, '67% less time');
+assert.equal(planning.node('eta').textContent, '00:00:50');
+assert.equal(planning.node('live-pace-chart').querySelectorAll('polyline').length, 1);
+planning.node('eta-mode').value = 'average'; planning.node('eta-mode').handlers.change();
+assert.equal(planning.node('eta').textContent, '00:02:50');
+assert.equal(run(planning, 'state'), 'paused', 'Changing the forecast never changes timer state');
+planningTab.render();
+assert.equal(planningTab.node('eta-mode').value, 'average', 'Stale tabs retain the chosen ETA basis');
+const plannedDeadline = Math.ceil((wall + 600000) / 60000) * 60000;
+planning.node('deadline').value = run(planning, `localDateTime(${plannedDeadline})`);
+planning.node('deadline').handlers.change();
+assert.equal(run(planning, 'deadline'), plannedDeadline, 'Datetime controls convert local time to a timestamp');
+planningTab.render();
+assert.equal(run(planningTab, 'deadline'), plannedDeadline, 'Stale tabs retain deadline edits');
+const marginBeforeBreak = run(planning, 'deadlineOutlook(deadline, Date.now(), paceMetrics(checkpoints, elapsed(), goal, etaMode), state).margin');
+wall += 120000; now += 120000;
+planning.render();
+assert.equal(run(planning, 'elapsed()'), 610000);
+assert.equal(run(planning, 'deadlineOutlook(deadline, Date.now(), paceMetrics(checkpoints, elapsed(), goal, etaMode), state).margin'), marginBeforeBreak - 120000, 'Breaks consume deadline budget without adding active time');
+const planningBackup = JSON.stringify(run(planning, 'createBackup()'));
+const planningDestination = memoryStorage();
+const importedPlan = createApp(planningDestination);
+assert.equal(run(importedPlan, `importBackup(${JSON.stringify(planningBackup)}).sessions`), 1);
+assert.equal(JSON.parse(planningDestination.getItem('pace-sessions')).sessions[0].deadline, plannedDeadline);
+assert.equal(JSON.parse(planningDestination.getItem('pace-sessions')).sessions[0].etaMode, 'average');
+assert.equal(run(importedPlan, `importBackup(${JSON.stringify(planningBackup)}).sessions`), 0);
+const conflictingPlan = JSON.parse(planningBackup);
+conflictingPlan.sessions[0].deadline += 60000;
+assert.equal(run(importedPlan, `importBackup(${JSON.stringify(JSON.stringify(conflictingPlan))}).sessions`), 1, 'Deadline conflicts preserve both backup versions');
+assert.equal(run(planning, 'deleteSavedSessions(["planning"])'), '');
+assert.equal(planning.node('deadline').value, '');
+assert.equal(run(planning, 'undoSessionDeletion()'), '');
+assert.equal(run(planning, 'deadline'), plannedDeadline);
+assert.equal(run(planning, 'etaMode'), 'average');
+assert.equal(createApp(planningStorage).node('deadline').value, run(planning, `localDateTime(${plannedDeadline})`));
+const restoredPlanningTab = createApp(planningStorage);
+restoredPlanningTab.node('eta-mode').value = 'recent'; restoredPlanningTab.node('eta-mode').handlers.change();
+planning.render();
+assert.equal(run(planning, 'etaMode'), 'recent', 'Undo keeps subsequent cross-tab planning changes in sync');
+run(planning, 'restartSession("planning")');
+assert.equal(run(planning, 'deadline'), null, 'Restart keeps the old deadline on the archived session only');
+assert.equal(run(planning, 'completedAt'), null);
+assert.equal(JSON.parse(planningStorage.getItem('pace-sessions')).sessions.find(saved => saved.id === 'planning').deadline, plannedDeadline);
+
+const planningQuotaStorage = memoryStorage({
+  'pace-session': JSON.stringify(planningRecord),
+  'pace-sessions': JSON.stringify({version: 1, sessions: [planningRecord]}),
+});
+let failPlanningSnapshot = false;
+const planningQuota = {...planningQuotaStorage, setItem(key, value) {
+  if (failPlanningSnapshot && key === 'pace-session') throw Error('Quota exceeded');
+  planningQuotaStorage.setItem(key, value);
+}};
+const quotaPlanningApp = createApp(planningQuota);
+failPlanningSnapshot = true;
+wall += 1000;
+quotaPlanningApp.node('deadline').value = run(quotaPlanningApp, `localDateTime(${plannedDeadline})`);
+quotaPlanningApp.node('deadline').handlers.change();
+assert.equal(createApp(planningQuota).node('deadline').value, run(quotaPlanningApp, `localDateTime(${plannedDeadline})`), 'A stale active snapshot cannot overwrite a deadline already saved in history');
+
+const finishStorage = memoryStorage();
+const finishApp = createApp(finishStorage);
+run(finishApp, `startSession({goal:1, unit:'tasks', activity:'Deadline check', deadline:${wall + 10000}})`);
+now += 1000; wall += 1000; finishApp.click('done');
+const recordedFinish = run(finishApp, 'completedAt');
+assert.equal(finishApp.node('deadline-status').textContent, 'Met deadline');
+wall += 60000; finishApp.render();
+assert.equal(run(finishApp, 'completedAt'), recordedFinish);
+assert.equal(finishApp.node('deadline-status').textContent, 'Met deadline', 'A met deadline stays met after its wall-clock deadline passes');
+const finishId = run(finishApp, 'sessionId');
+assert.equal(run(finishApp, `updateSavedSession(${JSON.stringify(finishId)}, {activity:'Corrected', unit:'tasks', goal:1, times:[1000], current:0})`), '');
+assert.equal(run(finishApp, 'completedAt'), recordedFinish, 'Editing a completed session preserves its recorded completion time');
+finishApp.click('undo');
+assert.equal(run(finishApp, 'completedAt'), null);
+finishApp.click('pause'); finishApp.click('done');
+assert.equal(finishApp.node('deadline-status').textContent, 'Finished late');
 
 async function testWakeLock() {
   const locks = [];
@@ -479,5 +785,5 @@ async function testWakeLock() {
   assert.match(denied.node('wake-status').textContent, /unavailable/);
 }
 testWakeLock().then(() => {
-  console.log('Pace checks passed: legacy data, history, backup merging/rollback, presets, notes, settings, chart, and wake-lock lifecycle.');
+  console.log('Pace checks passed: deadlines, recent-pace ETA/trends, history search/filter/sort, bulk deletion/undo/rollback/stale tabs, session CRUD, backups, presets, notes, settings, charts, and wake-lock lifecycle.');
 }).catch(error => { console.error(error); process.exitCode = 1; });

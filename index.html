@@ -72,6 +72,23 @@
     .estimate h3 { font-size: .8rem; font-weight: 400; color: var(--muted); margin: 0 0 10px; }
     .estimate .value { font-size: 1.4rem; margin: 0; color: var(--green); }
     #estimate-note { margin: 16px 0 0; font-size: .85rem; }
+    .history { margin-top: 20px; }
+    summary { cursor: pointer; font-size: .9rem; min-height: 44px; align-content: center; }
+    .history-list { display: grid; gap: 14px; margin-top: 16px; }
+    .saved-session { border-top: 1px solid var(--surface); padding-top: 16px; }
+    .saved-session h3 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+    .saved-session p { font-size: .8rem; margin: 8px 0 12px; overflow-wrap: anywhere; }
+    .history-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .history-actions button { padding: 10px 14px; min-height: 44px; }
+    .data-warning { flex-basis: 100%; margin: 0; line-height: 1.6; }
+    dialog { width: min(560px, calc(100% - 28px)); max-height: calc(100dvh - 28px); padding: 24px; border: 1px solid var(--surface); border-radius: 16px; background: var(--mantle); color: var(--text); overflow: auto; }
+    dialog::backdrop { background: rgb(0 0 0 / .6); }
+    dialog h2 { margin: 0 0 18px; font-size: 1.2rem; }
+    .editor-fields { display: grid; gap: 16px; }
+    #unit-times { display: grid; gap: 10px; max-height: 240px; overflow-y: auto; padding: 4px; }
+    .unit-time { display: grid; grid-template-columns: 1fr minmax(100px, 160px); align-items: center; gap: 12px; }
+    .editor-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+    #editor-error { color: var(--peach); margin: 0; }
     footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: .75rem; margin: 26px 0 12px; padding-top: 20px; border-top: 1px solid var(--surface); }
     footer a { color: var(--muted); text-underline-offset: 3px; }
     @media (max-width: 820px) { .workspace { grid-template-columns: 1fr; } .sidebar { grid-template-columns: 1fr 1fr; } }
@@ -149,8 +166,30 @@
   </section>
   </aside>
   </div>
-  <footer class="muted"><span id="storage-status">Session saves on this device.</span><a href="https://catppuccin.com/" target="_blank" rel="noreferrer">Catppuccin palette</a></footer>
+  <details class="card history" id="history">
+    <summary>Saved sessions <span class="muted" id="history-count">(0)</span></summary>
+    <div class="history-actions"><button type="button" id="new-session">New session</button></div>
+    <div class="history-list" id="history-list"></div>
+  </details>
+  <footer class="muted"><span id="storage-status">Session saves on this device.</span><a href="https://catppuccin.com/" target="_blank" rel="noreferrer">Catppuccin palette</a>
+    <p class="data-warning">Sessions are stored only in this browser on this device. Clearing site data, private browsing, or browser storage cleanup can erase them. No cloud backup.</p>
+  </footer>
 </main>
+<dialog id="session-editor" aria-labelledby="editor-title">
+  <form id="edit-form">
+    <h2 id="editor-title">Session details</h2>
+    <div class="editor-fields">
+      <div class="field"><label for="edit-activity">Activity</label><input id="edit-activity" maxlength="80"></div>
+      <div class="field"><label for="edit-unit">Unit name (plural)</label><input id="edit-unit" maxlength="32" required></div>
+      <div class="field"><label for="edit-goal">Goal</label><input id="edit-goal" type="number" inputmode="numeric" min="1" max="999999" step="1" required></div>
+      <div class="field"><span class="muted">Completed unit times (seconds)</span><div id="unit-times"></div></div>
+      <div class="history-actions"><button type="button" id="add-unit">Add unit</button><button type="button" id="remove-unit">Remove last unit</button></div>
+      <div class="field"><label for="edit-current">Unfinished unit time (seconds)</label><input id="edit-current" type="number" inputmode="decimal" min="0" step="0.001" required></div>
+      <p id="editor-error" role="alert"></p>
+    </div>
+    <div class="editor-actions"><button class="primary" type="submit">Save changes</button><button type="button" id="cancel-edit">Cancel</button></div>
+  </form>
+</dialog>
 <div id="sparkles" aria-hidden="true"></div>
 <script>
   'use strict';
@@ -162,6 +201,12 @@
   let accumulated = 0;
   let anchor = 0;
   let anchorWall = 0;
+  let activityName = '';
+  let sessionId = null;
+  let createdAt = 0;
+  let sessions = [];
+  let historySignature = '';
+  let editingId = null;
 
   // Wall time also counts Android device sleep, when performance.now may stop.
   const elapsed = () => accumulated + (state === 'running'
@@ -262,59 +307,230 @@
     }
   }
 
-  function saveSession() {
-    try {
-      if (state === 'complete') {
-        localStorage.removeItem('pace-session');
-        text('storage-status', 'Saved session cleared.');
-      } else if (state !== 'ready') {
-        localStorage.setItem('pace-session', JSON.stringify({
-          version: 1, state, goal, unit, checkpoints,
-          activity: el('activity').value,
-          elapsed: elapsed(), savedAt: Date.now(),
-        }));
-        text('storage-status', 'Session saved on this device.');
-      }
-    } catch {
-      text('storage-status', 'Session not saved: browser storage unavailable.');
-    }
+  const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  function validSession(saved) {
+    return saved && saved.version === 1 && ['running', 'paused', 'stopped', 'complete'].includes(saved.state) &&
+      Number.isInteger(saved.goal) && saved.goal >= 1 && saved.goal <= 999999 &&
+      typeof saved.unit === 'string' && saved.unit.trim() && saved.unit.length <= 32 &&
+      typeof saved.activity === 'string' && saved.activity.length <= 80 &&
+      Number.isFinite(saved.elapsed) && saved.elapsed >= 0 &&
+      Number.isFinite(saved.savedAt) && saved.savedAt >= 0 &&
+      Array.isArray(saved.checkpoints) && saved.checkpoints.length >= 1 && saved.checkpoints[0] === 0 &&
+      saved.checkpoints.length <= saved.goal + (saved.state === 'complete' ? 1 : 0) &&
+      (saved.state !== 'complete' || saved.checkpoints.length === saved.goal + 1) &&
+      saved.checkpoints.every((value, i, values) => Number.isFinite(value) && value >= 0 &&
+        value <= saved.elapsed && (i === 0 || value >= values[i - 1]));
   }
-
+  function readHistory() {
+    const raw = localStorage.getItem('pace-sessions');
+    if (!raw) return sessions;
+    const data = JSON.parse(raw);
+    if (data.version !== 1 || !Array.isArray(data.sessions)) throw new Error('Invalid session history');
+    return data.sessions.filter(saved => validSession(saved) && typeof saved.id === 'string' &&
+      saved.id && Number.isFinite(saved.createdAt) && saved.createdAt >= 0);
+  }
+  function remember(saved) {
+    sessions = [saved, ...sessions.filter(item => item.id !== saved.id)];
+  }
+  function writeHistory(saved) {
+    // Merge other saved sessions instead of replacing them with a stale tab's list.
+    try {
+      const merged = new Map(sessions.map(item => [item.id, item]));
+      for (const item of readHistory()) {
+        if (!merged.has(item.id) || item.savedAt > merged.get(item.id).savedAt) merged.set(item.id, item);
+      }
+      sessions = Array.from(merged.values());
+    } catch { /* Keep the in-memory history if storage cannot be read. */ }
+    remember(saved);
+    localStorage.setItem('pace-sessions', JSON.stringify({ version: 1, sessions }));
+  }
+  function saveSession() {
+    if (state === 'ready') return;
+    if (!sessionId) { sessionId = newId(); createdAt = Date.now(); }
+    const saved = {
+      version: 1, id: sessionId, createdAt, state, goal, unit,
+      checkpoints: checkpoints.slice(), activity: activityName,
+      elapsed: elapsed(), savedAt: Date.now(),
+    };
+    let historySaved = false;
+    try {
+      writeHistory(saved);
+      historySaved = true;
+    } catch { /* A history write failure must not block active-session saving. */ }
+    try {
+      // Retain the v1 active-session format so existing installations keep working.
+      if (state !== 'complete') localStorage.setItem('pace-session', JSON.stringify(saved));
+      else if (historySaved) localStorage.removeItem('pace-session');
+      text('storage-status', historySaved ? 'Sessions saved on this device.' : 'History not saved: browser storage unavailable or full.');
+    } catch { text('storage-status', 'Session not saved: browser storage unavailable or full.'); }
+  }
+  function loadSession(saved, restoreClock = false) {
+    sessionId = saved.id || newId();
+    createdAt = Number.isFinite(saved.createdAt) && saved.createdAt >= 0 ? saved.createdAt : saved.savedAt;
+    state = saved.state;
+    goal = saved.goal;
+    unit = saved.unit;
+    activityName = saved.activity;
+    checkpoints = saved.checkpoints.slice();
+    accumulated = saved.elapsed + (restoreClock && state === 'running' ? Math.max(0, Date.now() - saved.savedAt) : 0);
+    anchor = performance.now();
+    anchorWall = Date.now();
+    el('goal').value = goal;
+    el('unit').value = unit;
+    el('activity').value = activityName;
+  }
   function restoreSession() {
+    try { sessions = readHistory(); } catch { /* Existing active sessions can still be restored. */ }
     try {
       const raw = localStorage.getItem('pace-session');
       if (!raw) return;
       const saved = JSON.parse(raw);
-      if (!saved || saved.version !== 1 || !['running', 'paused', 'stopped'].includes(saved.state) ||
-          !Number.isInteger(saved.goal) || saved.goal < 1 || saved.goal > 999999 ||
-          typeof saved.unit !== 'string' || !saved.unit.trim() || saved.unit.length > 32 ||
-          typeof saved.activity !== 'string' || saved.activity.length > 80 ||
-          !Number.isFinite(saved.elapsed) || saved.elapsed < 0 ||
-          !Number.isFinite(saved.savedAt) || saved.savedAt < 0 ||
-          !Array.isArray(saved.checkpoints) || saved.checkpoints.length < 1 ||
-          saved.checkpoints.length > saved.goal || saved.checkpoints[0] !== 0 ||
-          !saved.checkpoints.every((value, i, values) => Number.isFinite(value) && value >= 0 &&
-            value <= saved.elapsed && (i === 0 || value >= values[i - 1]))) {
-        throw new Error('Invalid saved session');
-      }
-      state = saved.state;
-      goal = saved.goal;
-      unit = saved.unit;
-      checkpoints = saved.checkpoints;
-      accumulated = saved.elapsed + (state === 'running' ? Math.max(0, Date.now() - saved.savedAt) : 0);
-      anchor = performance.now();
-      anchorWall = Date.now();
-      el('goal').value = goal;
-      el('unit').value = unit;
-      el('activity').value = saved.activity;
+      if (!validSession(saved)) throw new Error('Invalid saved session');
+      loadSession(saved, true);
       message('Session restored.');
     } catch {
       try { localStorage.removeItem('pace-session'); } catch { /* Storage may be disabled. */ }
     }
   }
+  function suspendSession() {
+    if (state === 'running') freeze('paused');
+    saveSession();
+  }
+  function resumeSession(id) {
+    suspendSession();
+    const saved = sessions.find(item => item.id === id);
+    if (!saved || saved.state === 'complete') return;
+    loadSession(saved);
+    state = 'running';
+    message('Session resumed.');
+    render();
+  }
+  function startSession(config) {
+    suspendSession();
+    sessionId = newId();
+    createdAt = Date.now();
+    goal = config.goal;
+    unit = config.unit;
+    activityName = config.activity;
+    checkpoints = [0];
+    accumulated = 0;
+    anchor = performance.now();
+    anchorWall = Date.now();
+    state = 'running';
+    el('goal').value = goal;
+    el('unit').value = unit;
+    el('activity').value = activityName;
+    message(activityName || 'Session started.');
+    render();
+  }
+  function restartSession(id) {
+    const saved = sessions.find(item => item.id === id);
+    if (saved) startSession(saved);
+  }
+  function makeElement(tag, className, value) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (value !== undefined) element.textContent = value;
+    return element;
+  }
+  function renderHistory(force = false) {
+    text('history-count', `(${sessions.length})`);
+    if (!el('history').open) return;
+    // Don't rebuild focused controls when the live clock ticks.
+    const signature = JSON.stringify(sessions.map(saved =>
+      [saved.id, saved.state, saved.goal, saved.unit, saved.activity, saved.checkpoints, saved.id === sessionId ? null : saved.elapsed]));
+    if (!force && signature === historySignature) {
+      if (el('history-current-time')) text('history-current-time', duration(elapsed()));
+      return;
+    }
+    historySignature = signature;
+    const list = el('history-list');
+    list.replaceChildren();
+    if (!sessions.length) { list.append(makeElement('p', 'muted', 'No saved sessions.')); return; }
+    for (const saved of sessions) {
+      const row = makeElement('article', 'saved-session');
+      row.append(makeElement('h3', '', saved.activity || 'Untitled session'));
+      const status = { running: 'Running', paused: 'Paused', stopped: 'Stopped', complete: 'Complete' }[saved.state];
+      const meta = makeElement('p', 'muted');
+      const time = makeElement('span', 'number', duration(saved.elapsed));
+      if (saved.id === sessionId) time.id = 'history-current-time';
+      meta.append(
+        makeElement('span', '', `${new Date(saved.createdAt).toLocaleString()} · ${saved.checkpoints.length - 1}/${saved.goal} ${saved.unit} · `),
+        time,
+        makeElement('span', '', ` · ${status}${saved.id === sessionId ? ' · Current' : ''}`),
+      );
+      row.append(meta);
+      const actions = makeElement('div', 'history-actions');
+      for (const [action, label] of [['edit', 'Review / edit'], ['resume', 'Resume'], ['restart', 'Restart']]) {
+        const button = makeElement('button', '', label);
+        button.type = 'button';
+        button.dataset.action = action;
+        button.dataset.id = saved.id;
+        button.disabled = action === 'resume' && (saved.state === 'complete' || saved.id === sessionId && state === 'running');
+        actions.append(button);
+      }
+      row.append(actions);
+      list.append(row);
+    }
+  }
+  function addUnitTime(milliseconds = 0) {
+    const index = el('unit-times').children.length + 1;
+    const row = makeElement('div', 'unit-time');
+    const label = makeElement('label', '', `Unit ${index}`);
+    label.htmlFor = `unit-time-${index}`;
+    const input = makeElement('input');
+    input.id = label.htmlFor;
+    input.type = 'number';
+    input.inputMode = 'decimal';
+    input.min = '0';
+    input.step = '0.001';
+    input.required = true;
+    input.value = Number((milliseconds / 1000).toFixed(3));
+    row.append(label, input);
+    el('unit-times').append(row);
+  }
+  function editSession(id) {
+    if (id === sessionId) { suspendSession(); render(); }
+    const saved = sessions.find(item => item.id === id);
+    if (!saved) return;
+    editingId = id;
+    el('edit-activity').value = saved.activity;
+    el('edit-unit').value = saved.unit;
+    el('edit-goal').value = saved.goal;
+    const last = saved.checkpoints[saved.checkpoints.length - 1];
+    el('edit-current').value = Number(((saved.elapsed - last) / 1000).toFixed(3));
+    el('unit-times').replaceChildren();
+    saved.checkpoints.slice(1).forEach((value, i) => addUnitTime(value - saved.checkpoints[i]));
+    text('editor-error', '');
+    el('session-editor').showModal();
+  }
+  function updateSavedSession(id, changes) {
+    const saved = sessions.find(item => item.id === id);
+    if (!saved) return 'Session not found.';
+    if (changes.times.length > changes.goal) return 'Goal cannot be less than completed units.';
+    if (changes.times.length === changes.goal && changes.current !== 0) return 'Set unfinished unit time to 0 when the goal is complete.';
+    const points = [0];
+    for (const time of changes.times) points.push(points[points.length - 1] + time);
+    const updated = {
+      ...saved, activity: changes.activity.trim(), unit: changes.unit.trim(), goal: changes.goal,
+      checkpoints: points, elapsed: points[points.length - 1] + changes.current,
+      state: changes.times.length === changes.goal ? 'complete' : 'paused', savedAt: Date.now(),
+    };
+    if (!changes.times.every(time => Number.isFinite(time) && time >= 0) ||
+        !Number.isFinite(changes.current) || changes.current < 0 || !validSession(updated)) return 'Enter valid unit names, goals, and non-negative times.';
+    try { writeHistory(updated); }
+    catch { return 'Changes could not be saved. Browser storage is unavailable or full.'; }
+    if (id === sessionId) {
+      loadSession(updated);
+      saveSession();
+    }
+    renderHistory(true);
+    return '';
+  }
 
   function render() {
     saveSession();
+    renderHistory();
     const done = checkpoints.length - 1;
     const left = goal - done;
     const now = elapsed();
@@ -382,15 +598,9 @@
     } else {
       if (!el('goal').reportValidity() || !el('unit').reportValidity()) return;
       if (!el('unit').value.trim()) { el('unit').focus(); message('Enter a unit name.'); return; }
-      if (checkpoints.length > 1 && !confirm('Start a fresh session? This resets your completed units and timings.')) return;
-      goal = Number(el('goal').value);
-      unit = el('unit').value.trim();
-      checkpoints = [0];
-      accumulated = 0;
-      anchor = performance.now();
-      anchorWall = Date.now();
-      state = 'running';
-      message(el('activity').value.trim() || 'Session started.');
+      if (checkpoints.length > 1 && !confirm('Start fresh? The current session will remain in history.')) return;
+      startSession({ goal: Number(el('goal').value), unit: el('unit').value.trim(), activity: el('activity').value.trim() });
+      return;
     }
     render();
   });
@@ -424,8 +634,49 @@
     message(`Last unit undone.${state === 'paused' ? ' Paused — press Resume to continue.' : ''}`);
     render();
   });
+  el('history').addEventListener('toggle', () => renderHistory(true));
+  el('history-list').addEventListener('click', event => {
+    const button = event.target.closest('button[data-action]');
+    if (!button || button.disabled) return;
+    const actions = { edit: editSession, resume: resumeSession, restart: restartSession };
+    actions[button.dataset.action]?.(button.dataset.id);
+  });
+  el('new-session').addEventListener('click', () => {
+    suspendSession();
+    sessionId = null;
+    state = 'ready';
+    goal = 20;
+    unit = 'units';
+    activityName = '';
+    checkpoints = [0];
+    accumulated = 0;
+    el('goal').value = goal;
+    el('unit').value = unit;
+    el('activity').value = '';
+    try { localStorage.removeItem('pace-session'); } catch { /* History remains available in memory. */ }
+    message('Start session to begin.');
+    render();
+  });
+  el('add-unit').addEventListener('click', () => addUnitTime());
+  el('remove-unit').addEventListener('click', () => el('unit-times').lastElementChild?.remove());
+  el('cancel-edit').addEventListener('click', () => el('session-editor').close());
+  el('edit-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if (!el('edit-form').reportValidity()) return;
+    const error = updateSavedSession(editingId, {
+      activity: el('edit-activity').value,
+      unit: el('edit-unit').value,
+      goal: Number(el('edit-goal').value),
+      current: Number(el('edit-current').value) * 1000,
+      times: Array.from(el('unit-times').querySelectorAll('input'), input => Number(input.value) * 1000),
+    });
+    if (error) { text('editor-error', error); return; }
+    el('session-editor').close();
+    message('Changes saved.');
+    render();
+  });
   document.addEventListener('keydown', event => {
-    if (event.repeat || event.ctrlKey || event.altKey || event.metaKey ||
+    if (el('session-editor').open || event.repeat || event.ctrlKey || event.altKey || event.metaKey ||
         event.target.matches('input, textarea, select, [contenteditable]')) return;
     const id = {p: 'done', t: 'pause', l: 'undo', s: 'session'}[event.key.toLowerCase()];
     if (id) {

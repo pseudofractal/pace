@@ -167,4 +167,117 @@ const unavailable = createApp({
 unavailable.click('session');
 assert.equal(unavailable.node('status').textContent, 'Running');
 assert.match(unavailable.node('storage-status').textContent, /unavailable/);
-console.log('Pace checks passed: timing, Android sleep, quotes, controls, themes, persistence, completion cleanup.');
+
+// An existing v1 installation migrates without losing timings, theme, or progress.
+const legacy = {
+  version: 1, state: 'paused', goal: 3, unit: 'lessons', activity: 'Algebra',
+  checkpoints: [0, 60000], elapsed: 90000, savedAt: wall,
+};
+const legacyStore = new Map([['pace-session', JSON.stringify(legacy)], ['pace-theme', 'frappe']]);
+const legacyStorage = {
+  getItem: key => legacyStore.get(key) ?? null,
+  setItem: (key, value) => legacyStore.set(key, value),
+  removeItem: key => legacyStore.delete(key),
+};
+const history = () => JSON.parse(legacyStore.get('pace-sessions')).sessions;
+const run = (app, expression) => vm.runInContext(expression, app.context);
+const migrated = createApp(legacyStorage);
+assert.equal(migrated.node('progress-text').textContent, '1 of 3 lessons finished');
+assert.equal(migrated.node('total').textContent, '00:01:30');
+assert.equal(migrated.context.document.documentElement.dataset.theme, 'frappe');
+assert.equal(history().length, 1);
+const oldId = history()[0].id;
+assert.equal(JSON.parse(legacyStore.get('pace-session')).id, oldId);
+const restoredLegacy = createApp(legacyStorage);
+assert.equal(history().length, 1, 'Migration is idempotent');
+run(restoredLegacy, `resumeSession(${JSON.stringify(oldId)})`);
+now += 30000;
+restoredLegacy.click('done');
+assert.equal(restoredLegacy.node('last').textContent, '00:01:00');
+restoredLegacy.click('new-session');
+assert.equal(restoredLegacy.node('status').textContent, 'Ready');
+assert.equal(history()[0].state, 'paused', 'Switching sessions freezes the previous timer');
+assert.equal(history()[0].elapsed, 120000);
+assert.equal(legacyStore.has('pace-session'), false);
+restoredLegacy.node('activity').value = 'Packing';
+restoredLegacy.node('unit').value = 'orders';
+restoredLegacy.node('unit').handlers.input();
+restoredLegacy.node('goal').value = '2';
+restoredLegacy.node('goal').handlers.input();
+restoredLegacy.click('session');
+now += 20000;
+restoredLegacy.click('done');
+now += 20000;
+restoredLegacy.click('done');
+const completedId = history()[0].id;
+assert.equal(history().length, 2);
+assert.equal(history()[0].state, 'complete', 'Completed sessions are archived');
+assert.equal(legacyStore.has('pace-session'), false, 'Completion still clears the legacy active-session key');
+const archiveOnly = createApp(legacyStorage);
+assert.equal(archiveOnly.node('status').textContent, 'Ready');
+assert.equal(archiveOnly.node('history-count').textContent, '(2)');
+run(archiveOnly, `resumeSession(${JSON.stringify(oldId)})`);
+assert.equal(archiveOnly.node('total').textContent, '00:02:00', 'Archived time excludes other sessions');
+now += 30000;
+archiveOnly.click('done');
+assert.equal(archiveOnly.node('status').textContent, 'Complete');
+run(archiveOnly, `restartSession(${JSON.stringify(oldId)})`);
+assert.equal(archiveOnly.node('total').textContent, '00:00:00');
+assert.equal(history().length, 3, 'Restart creates a new session and preserves the original');
+assert.equal(history().find(item => item.id === oldId).state, 'complete');
+const activeId = JSON.parse(legacyStore.get('pace-session')).id;
+const edited = {activity: 'Parcels', unit: 'parcels', goal: 3, times: [10000, 30000], current: 5000};
+assert.equal(run(archiveOnly, `updateSavedSession(${JSON.stringify(completedId)}, ${JSON.stringify(edited)})`), '');
+const changed = history().find(item => item.id === completedId);
+assert.deepEqual(changed.checkpoints, [0, 10000, 40000]);
+assert.equal(changed.elapsed, 45000);
+assert.equal(changed.state, 'paused');
+assert.equal(JSON.parse(legacyStore.get('pace-session')).id, activeId, 'Editing an archived session does not replace the current one');
+assert.match(run(archiveOnly, `updateSavedSession(${JSON.stringify(completedId)}, ${JSON.stringify({...edited, goal: 1})})`), /Goal cannot/);
+assert.match(run(archiveOnly, `updateSavedSession(${JSON.stringify(completedId)}, ${JSON.stringify({...edited, times: [-1]})})`), /valid/);
+assert.match(run(archiveOnly, `updateSavedSession(${JSON.stringify(completedId)}, ${JSON.stringify({...edited, goal: 2})})`), /unfinished unit time/);
+run(archiveOnly, `resumeSession(${JSON.stringify(completedId)})`);
+assert.equal(archiveOnly.node('progress-text').textContent, '2 of 3 parcels finished');
+assert.equal(archiveOnly.node('average').textContent, '00:00:20');
+assert.equal(archiveOnly.node('current').textContent, '00:00:05');
+archiveOnly.click('session');
+archiveOnly.node('activity').value = 'New draft';
+archiveOnly.click('session');
+assert.equal(history().find(item => item.id === completedId).activity, 'Parcels', 'New-session drafts do not overwrite old metadata');
+assert.equal(history()[0].activity, 'New draft');
+const runningStore = new Map([['pace-session', JSON.stringify({...legacy, state: 'running', savedAt: wall - 15000})]]);
+const runningStorage = {
+  getItem: key => runningStore.get(key) ?? null,
+  setItem: (key, value) => runningStore.set(key, value),
+  removeItem: key => runningStore.delete(key),
+};
+const upgradedRunning = createApp(runningStorage);
+assert.equal(upgradedRunning.node('status').textContent, 'Running', 'Upgrading does not pause a v1 running session');
+assert.equal(upgradedRunning.node('total').textContent, '00:01:45');
+assert.equal(upgradedRunning.node('current').textContent, '00:00:45');
+const migratedId = JSON.parse(runningStore.get('pace-session')).id;
+now += 5000;
+wall += 5000;
+upgradedRunning.context.document.visibilityState = 'hidden';
+upgradedRunning.listeners.visibilitychange();
+const refreshedRunning = createApp(runningStorage);
+assert.equal(refreshedRunning.node('status').textContent, 'Running');
+assert.equal(refreshedRunning.node('total').textContent, '00:01:50', 'Refresh preserves running time exactly once');
+assert.equal(refreshedRunning.node('progress-text').textContent, '1 of 3 lessons finished');
+assert.equal(JSON.parse(runningStore.get('pace-session')).id, migratedId);
+assert.equal(JSON.parse(runningStore.get('pace-sessions')).sessions.length, 1);
+assert.equal(JSON.parse(runningStore.get('pace-session')).version, 1, 'Active data stays readable by the old client');
+const limitedStorage = {
+  ...runningStorage,
+  setItem(key, value) {
+    if (key === 'pace-sessions') throw Error('History quota exceeded');
+    runningStore.set(key, value);
+  },
+};
+const limited = createApp(limitedStorage);
+now += 5000;
+limited.render();
+assert.equal(JSON.parse(runningStore.get('pace-session')).elapsed, 115000, 'History failure does not stop active-session saving');
+assert.equal(createApp(limitedStorage).node('total').textContent, '00:01:55');
+assert.match(limited.node('storage-status').textContent, /History not saved/);
+console.log('Pace checks passed: timing, controls, persistence, legacy migration, session history, resume/restart, editing, and validation.');

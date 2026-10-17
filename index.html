@@ -41,7 +41,9 @@
     .setup { display: grid; grid-template-columns: 1fr 1fr 100px; gap: 14px; margin-top: 22px; }
     .field { display: grid; gap: 8px; min-width: 0; }
     label { font-size: .8rem; color: var(--muted); }
-    input, select { font: inherit; width: 100%; min-width: 0; min-height: 44px; padding: 11px; border: 1px solid var(--surface); border-radius: 8px; color: var(--text); background: var(--base); }
+    input, select, textarea { font: inherit; width: 100%; min-width: 0; min-height: 44px; padding: 11px; border: 1px solid var(--surface); border-radius: 8px; color: var(--text); background: var(--base); }
+    textarea { resize: vertical; }
+    input[type="checkbox"] { width: 20px; min-height: 20px; height: 20px; padding: 0; accent-color: var(--accent); }
     select { width: auto; font-size: .8rem; }
     input:disabled { opacity: .65; }
     .badge { border-radius: 100px; padding: 7px 12px; font-size: .75rem; color: var(--accent); background: var(--surface); }
@@ -80,6 +82,15 @@
     .saved-session p { font-size: .8rem; margin: 8px 0 12px; overflow-wrap: anywhere; }
     .history-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .history-actions button { padding: 10px 14px; min-height: 44px; }
+    .extras { margin-top: 18px; border-top: 1px solid var(--surface); padding-top: 10px; }
+    .extra-fields { display: grid; gap: 14px; margin-top: 12px; }
+    .extra-fields select { width: 100%; }
+    .option { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: .9rem; }
+    .small-status { font-size: .8rem; margin: 0; overflow-wrap: anywhere; }
+    .saved-note { white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-height: 3.2em; overflow: hidden; }
+    .chart { margin: 0; }
+    .chart figcaption { font-size: .85rem; margin-bottom: 8px; }
+    #pace-chart { width: 100%; height: auto; display: block; color: var(--accent); border: 1px solid var(--surface); border-radius: 8px; }
     .data-warning { flex-basis: 100%; margin: 0; line-height: 1.6; }
     dialog { width: min(560px, calc(100% - 28px)); max-height: calc(100dvh - 28px); padding: 24px; border: 1px solid var(--surface); border-radius: 16px; background: var(--mantle); color: var(--text); overflow: auto; }
     dialog::backdrop { background: rgb(0 0 0 / .6); }
@@ -103,7 +114,7 @@
       .theme-picker label { display: none; }
       .controls { gap: 8px; }
       .clock { font-size: clamp(2.6rem, 11vw, 4rem); }
-      input, select { font-size: 16px; min-height: 44px; }
+      input, select, textarea { font-size: 16px; min-height: 44px; }
       .estimate .value { overflow-wrap: anywhere; }
     }
   </style>
@@ -143,6 +154,15 @@
       <button type="button" id="session">Start session <kbd>S</kbd></button>
     </div>
     <p id="message" class="muted" role="status">Start session to begin.</p>
+    <details class="extras">
+      <summary>Notes &amp; presets</summary>
+      <div class="extra-fields">
+        <div class="field"><label for="notes">Session notes</label><textarea id="notes" rows="3" maxlength="4000" placeholder="Start a session to add notes." disabled></textarea></div>
+        <div class="field"><label for="preset">Saved setups</label><select id="preset"><option value="">Select a preset</option></select></div>
+        <div class="history-actions"><button type="button" id="start-preset" disabled>Start preset</button><button type="button" id="save-preset">Save setup</button><button type="button" id="remove-preset" disabled>Remove preset</button></div>
+        <p id="preset-status" class="small-status muted" role="status"></p>
+      </div>
+    </details>
   </section>
 
   <aside class="sidebar" aria-label="Session insights">
@@ -171,6 +191,20 @@
     <div class="history-actions"><button type="button" id="new-session">New session</button></div>
     <div class="history-list" id="history-list"></div>
   </details>
+  <details class="card history" id="options">
+    <summary>Settings &amp; backup</summary>
+    <div class="extra-fields">
+      <label class="option"><input id="show-quotes" type="checkbox" checked>Motivational quotes</label>
+      <label class="option"><input id="show-sparkles" type="checkbox" checked>Completion sparkles</label>
+      <label class="option"><input id="keep-awake" type="checkbox">Keep screen awake while running</label>
+      <p id="wake-status" class="small-status muted" role="status"></p>
+      <div class="history-actions"><button type="button" id="export-backup">Export backup</button><button type="button" id="import-backup">Import backup</button></div>
+      <input id="backup-file" type="file" accept=".json,application/json" hidden>
+      <label class="option"><input id="restore-preferences" type="checkbox">Also restore backup settings and theme</label>
+      <p class="small-status muted">Imports merge with existing sessions. Imported running sessions start paused.</p>
+      <p id="backup-status" class="small-status muted" role="status"></p>
+    </div>
+  </details>
   <footer class="muted"><span id="storage-status">Session saves on this device.</span><a href="https://catppuccin.com/" target="_blank" rel="noreferrer">Catppuccin palette</a>
     <p class="data-warning">Sessions are stored only in this browser on this device. Clearing site data, private browsing, or browser storage cleanup can erase them. No cloud backup.</p>
   </footer>
@@ -182,6 +216,8 @@
       <div class="field"><label for="edit-activity">Activity</label><input id="edit-activity" maxlength="80"></div>
       <div class="field"><label for="edit-unit">Unit name (plural)</label><input id="edit-unit" maxlength="32" required></div>
       <div class="field"><label for="edit-goal">Goal</label><input id="edit-goal" type="number" inputmode="numeric" min="1" max="999999" step="1" required></div>
+      <div class="field"><label for="edit-notes">Notes</label><textarea id="edit-notes" rows="3" maxlength="4000"></textarea></div>
+      <figure class="chart"><figcaption>Time per unit · first → last</figcaption><svg id="pace-chart" viewBox="0 0 480 160" role="img" aria-label="Completed unit times, ordered from first to last" aria-describedby="chart-summary"></svg><p id="chart-summary" class="small-status muted"></p></figure>
       <div class="field"><span class="muted">Completed unit times (seconds)</span><div id="unit-times"></div></div>
       <div class="history-actions"><button type="button" id="add-unit">Add unit</button><button type="button" id="remove-unit">Remove last unit</button></div>
       <div class="field"><label for="edit-current">Unfinished unit time (seconds)</label><input id="edit-current" type="number" inputmode="decimal" min="0" step="0.001" required></div>
@@ -207,6 +243,9 @@
   let sessions = [];
   let historySignature = '';
   let editingId = null;
+  let sessionNotes = '';
+  let settings = { quotes: true, sparkles: true, awake: false };
+  let presets = [];
 
   // Wall time also counts Android device sleep, when performance.now may stop.
   const elapsed = () => accumulated + (state === 'running'
@@ -265,10 +304,10 @@
   ];
   let quoteIndex = Math.floor(Math.random() * quotes.length);
   function rotateQuote() {
+    if (!settings.quotes) return;
     text('quote', `“${quotes[quoteIndex]}”`);
     quoteIndex = (quoteIndex + 1) % quotes.length;
   }
-  rotateQuote();
   setInterval(rotateQuote, 120000);
   function freeze(nextState) {
     accumulated = elapsed();
@@ -276,7 +315,7 @@
   }
 
   function celebrate(complete) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!settings.sparkles || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const layer = el('sparkles');
     layer.replaceChildren();
     const button = el('done').getBoundingClientRect();
@@ -308,11 +347,151 @@
   }
 
   const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const notesOf = saved => typeof saved.notes === 'string' ? saved.notes.slice(0, 4000) : '';
+  function validSetup(config) {
+    return config && Number.isInteger(config.goal) && config.goal >= 1 && config.goal <= 999999 &&
+      typeof config.unit === 'string' && config.unit.trim() && config.unit.length <= 32 &&
+      typeof config.activity === 'string' && config.activity.length <= 80;
+  }
+  function validPreset(preset) {
+    return validSetup(preset) && typeof preset.id === 'string' && preset.id.length > 0 && preset.id.length <= 256 &&
+      typeof preset.name === 'string' && preset.name.trim() && preset.name.length <= 80;
+  }
+  function validSettings(value) {
+    return value && ['quotes', 'sparkles', 'awake'].every(key => typeof value[key] === 'boolean');
+  }
+  function latestPresets() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('pace-presets'));
+      if (saved?.version === 1 && Array.isArray(saved.presets)) return saved.presets.filter(validPreset);
+    } catch { /* Retain in-memory setups if storage cannot be read. */ }
+    return presets;
+  }
+  function readExtras() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('pace-settings'));
+      if (saved?.version === 1 && validSettings(saved.settings)) settings = { ...saved.settings };
+    } catch { /* Defaults do not affect existing sessions. */ }
+    presets = latestPresets();
+  }
+  function applySettings() {
+    el('show-quotes').checked = settings.quotes;
+    el('show-sparkles').checked = settings.sparkles;
+    el('keep-awake').checked = settings.awake;
+    el('keep-awake').disabled = !supportsWakeLock();
+    el('quote').hidden = !settings.quotes;
+    if (!settings.sparkles) el('sparkles').replaceChildren();
+    syncWakeLock();
+  }
+  function renderPresets() {
+    const select = el('preset');
+    const selected = select.value;
+    select.replaceChildren();
+    const placeholder = makeElement('option', '', 'Select a preset');
+    placeholder.value = '';
+    select.append(placeholder);
+    for (const preset of presets) {
+      const count = `${preset.goal} ${preset.unit}`;
+      const option = makeElement('option', '', preset.name === count ? count : `${preset.name} · ${count}`);
+      option.value = preset.id;
+      select.append(option);
+    }
+    select.value = presets.some(preset => preset.id === selected) ? selected : '';
+    el('start-preset').disabled = el('remove-preset').disabled = !select.value;
+  }
+  function savePreset(config) {
+    if (!validSetup(config)) return 'Enter a valid activity, unit name, and goal.';
+    const current = latestPresets();
+    const setup = { activity: config.activity.trim(), unit: config.unit.trim(), goal: config.goal };
+    const existing = current.find(preset => preset.activity === setup.activity && preset.unit === setup.unit && preset.goal === setup.goal);
+    const preset = existing || { id: newId(), name: setup.activity || `${setup.goal} ${setup.unit}`, ...setup };
+    const next = existing ? current : [...current, preset];
+    try { localStorage.setItem('pace-presets', JSON.stringify({ version: 1, presets: next })); }
+    catch { return 'Preset could not be saved. Browser storage is unavailable or full.'; }
+    presets = next;
+    renderPresets();
+    el('preset').value = preset.id;
+    el('start-preset').disabled = el('remove-preset').disabled = false;
+    return '';
+  }
+
+  let screenLock = null;
+  let wakeRequest = null;
+  let wakeBlocked = false;
+  let pageActive = true;
+  const supportsWakeLock = () => typeof navigator.wakeLock?.request === 'function';
+  const wantsWakeLock = () => pageActive && settings.awake && state === 'running' && document.visibilityState === 'visible';
+  async function releaseWakeLock() {
+    const lock = screenLock;
+    screenLock = null;
+    if (lock) { try { await lock.release(); } catch { /* A browser may already have released it. */ } }
+  }
+  async function syncWakeLock() {
+    if (!supportsWakeLock()) { text('wake-status', 'Screen wake lock is not supported in this browser.'); return; }
+    if (!wantsWakeLock()) {
+      wakeBlocked = false;
+      await releaseWakeLock();
+      text('wake-status', settings.awake ? 'Screen wake lock is inactive while paused or hidden.' : '');
+      return;
+    }
+    if (screenLock && !screenLock.released) { text('wake-status', 'Screen will stay awake.'); return; }
+    if (wakeRequest || wakeBlocked) return;
+    try {
+      wakeRequest = navigator.wakeLock.request('screen');
+      const lock = await wakeRequest;
+      if (!wantsWakeLock()) { await lock.release(); return; }
+      screenLock = lock;
+      lock.addEventListener('release', () => {
+        if (screenLock !== lock) return;
+        screenLock = null;
+        wakeBlocked = true;
+        text('wake-status', 'Screen wake lock was released by the device. Toggle the setting to retry.');
+      });
+      text('wake-status', 'Screen will stay awake.');
+    } catch {
+      wakeBlocked = true;
+      text('wake-status', 'Screen wake lock unavailable. Check browser permissions or battery settings.');
+    } finally { wakeRequest = null; }
+  }
+
+  function paceChartData(times) {
+    if (!times.length) return { points: [], summary: 'No completed units.' };
+    if (times.some(time => !Number.isFinite(time) || time < 0)) return { points: [], summary: 'Enter valid, non-negative unit times.' };
+    const stride = Math.ceil(times.length / 200);
+    const samples = [];
+    for (let i = 0; i < times.length; i += stride) {
+      const group = times.slice(i, i + stride);
+      samples.push(group.reduce((sum, value) => sum + value, 0) / group.length);
+    }
+    const maximum = times.reduce((a, b) => Math.max(a, b));
+    const minimum = times.reduce((a, b) => Math.min(a, b));
+    return {
+      points: samples.map((time, i) => [samples.length === 1 ? 240 : 20 + i * 440 / (samples.length - 1), 140 - time / (maximum || 1) * 120]),
+      summary: `${times.length} unit${times.length === 1 ? '' : 's'} · Fastest ${duration(minimum)} · Slowest ${duration(maximum)}${stride > 1 ? ` · Points average up to ${stride} units.` : ''}`,
+    };
+  }
+  function renderPaceChart() {
+    const times = Array.from(el('unit-times').querySelectorAll('input'), input => Number(input.value) * 1000);
+    const data = paceChartData(times);
+    const svg = el('pace-chart');
+    svg.replaceChildren();
+    text('chart-summary', data.summary);
+    if (!data.points.length) return;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    line.setAttribute('points', data.points.map(point => point.join(',')).join(' '));
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', 'currentColor');
+    line.setAttribute('stroke-width', '2');
+    svg.append(line);
+    if (data.points.length === 1) {
+      const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      point.setAttribute('cx', data.points[0][0]); point.setAttribute('cy', data.points[0][1]);
+      point.setAttribute('r', '4'); point.setAttribute('fill', 'currentColor'); svg.append(point);
+    }
+  }
   function validSession(saved) {
     return saved && saved.version === 1 && ['running', 'paused', 'stopped', 'complete'].includes(saved.state) &&
-      Number.isInteger(saved.goal) && saved.goal >= 1 && saved.goal <= 999999 &&
-      typeof saved.unit === 'string' && saved.unit.trim() && saved.unit.length <= 32 &&
-      typeof saved.activity === 'string' && saved.activity.length <= 80 &&
+      validSetup(saved) &&
       Number.isFinite(saved.elapsed) && saved.elapsed >= 0 &&
       Number.isFinite(saved.savedAt) && saved.savedAt >= 0 &&
       Array.isArray(saved.checkpoints) && saved.checkpoints.length >= 1 && saved.checkpoints[0] === 0 &&
@@ -332,24 +511,109 @@
   function remember(saved) {
     sessions = [saved, ...sessions.filter(item => item.id !== saved.id)];
   }
-  function writeHistory(saved) {
+  function latestHistory() {
     // Merge other saved sessions instead of replacing them with a stale tab's list.
+    const merged = new Map(sessions.map(item => [item.id, item]));
     try {
-      const merged = new Map(sessions.map(item => [item.id, item]));
       for (const item of readHistory()) {
         if (!merged.has(item.id) || item.savedAt > merged.get(item.id).savedAt) merged.set(item.id, item);
       }
-      sessions = Array.from(merged.values());
     } catch { /* Keep the in-memory history if storage cannot be read. */ }
+    return Array.from(merged.values());
+  }
+  function writeHistory(saved) {
+    sessions = latestHistory();
     remember(saved);
     localStorage.setItem('pace-sessions', JSON.stringify({ version: 1, sessions }));
+  }
+  function createBackup() {
+    saveSession();
+    sessions = latestHistory();
+    presets = latestPresets();
+    return JSON.parse(JSON.stringify({ app: 'pace', version: 1, exportedAt: Date.now(),
+      sessions, presets, settings, theme: document.documentElement.dataset.theme }));
+  }
+  function parseBackup(input) {
+    const data = typeof input === 'string' ? JSON.parse(input.trim()) : input;
+    if (!data || data.version !== 1 || data.app !== undefined && data.app !== 'pace') throw new Error('Unsupported backup format.');
+    if (data.sessions !== undefined && !Array.isArray(data.sessions)) throw new Error('Backup has no valid session list.');
+    const records = Array.isArray(data.sessions) ? data.sessions : validSession(data) ? [data] : null;
+    if (!records) throw new Error('Backup has no valid session list.');
+    const imported = records.map((saved, index) => {
+      if (!validSession(saved) || saved.notes !== undefined && (typeof saved.notes !== 'string' || saved.notes.length > 4000)) throw new Error('Backup contains an invalid session.');
+      const id = saved.id === undefined ? `legacy-${saved.savedAt}-${index}` : saved.id;
+      const date = saved.createdAt === undefined ? saved.savedAt : saved.createdAt;
+      if (typeof id !== 'string' || !id || id.length > 512 || !Number.isFinite(date) || date < 0 || date > 8640000000000000) throw new Error('Backup contains an invalid session ID or date.');
+      return { ...saved, id, createdAt: date, notes: notesOf(saved), state: saved.state === 'running' ? 'paused' : saved.state, savedAt: Date.now() };
+    });
+    if (new Set(imported.map(saved => saved.id)).size !== imported.length) throw new Error('Backup contains duplicate session IDs.');
+    const setups = data.presets === undefined ? [] : data.presets;
+    if (!Array.isArray(setups) || !setups.every(validPreset)) throw new Error('Backup contains an invalid preset.');
+    if (new Set(setups.map(preset => preset.id)).size !== setups.length) throw new Error('Backup contains duplicate preset IDs.');
+    if (data.settings !== undefined && !validSettings(data.settings)) throw new Error('Backup contains invalid settings.');
+    if (data.theme !== undefined && !themes.includes(data.theme)) throw new Error('Backup contains an invalid theme.');
+    return { sessions: imported, presets: setups.map(({ id, name, activity, unit, goal }) => ({ id, name, activity, unit, goal })), settings: data.settings, theme: data.theme };
+  }
+  function sessionContents(saved) {
+    return JSON.stringify([saved.goal, saved.unit, saved.activity, notesOf(saved), saved.checkpoints,
+      saved.elapsed, saved.state === 'complete', saved.createdAt]);
+  }
+  function mergeRecords(existing, incoming, contents, maxIdLength = 512) {
+    const byId = new Map(existing.map(record => [record.id, record]));
+    const additions = [];
+    for (const record of incoming) {
+      let id = record.id;
+      let copy = 0;
+      while (byId.has(id) && contents(byId.get(id)) !== contents(record)) {
+        id = `${record.id.slice(0, maxIdLength - 32)}-copy-${++copy}`;
+      }
+      if (byId.has(id)) continue;
+      const saved = { ...record, id };
+      additions.push(saved);
+      byId.set(id, saved);
+    }
+    return { records: [...additions, ...existing], count: additions.length };
+  }
+  function storeTogether(entries) {
+    const previous = entries.map(([key]) => [key, localStorage.getItem(key)]);
+    let written = 0;
+    try {
+      for (const [key, value] of entries) { localStorage.setItem(key, value); written++; }
+    } catch (error) {
+      for (const [key, value] of previous.slice(0, written).reverse()) {
+        try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* Report the failed import below. */ }
+      }
+      throw error;
+    }
+  }
+  function importBackup(input, restorePreferences = false) {
+    // Validate everything before touching saved data, and never replace the active session.
+    const backup = parseBackup(input);
+    saveSession();
+    const merged = mergeRecords(latestHistory(), backup.sessions, sessionContents);
+    const setups = mergeRecords(latestPresets(), backup.presets, preset => JSON.stringify([preset.name, preset.activity, preset.unit, preset.goal]), 256);
+    const entries = [
+      ['pace-sessions', JSON.stringify({ version: 1, sessions: merged.records })],
+      ['pace-presets', JSON.stringify({ version: 1, presets: setups.records })],
+    ];
+    if (restorePreferences && backup.settings) entries.push(['pace-settings', JSON.stringify({ version: 1, settings: backup.settings })]);
+    if (restorePreferences && backup.theme) entries.push(['pace-theme', backup.theme]);
+    try { storeTogether(entries); }
+    catch { throw new Error('Import could not be saved. Browser storage is unavailable or full.'); }
+    sessions = merged.records;
+    presets = setups.records;
+    if (restorePreferences && backup.settings) { settings = { ...backup.settings }; applySettings(); }
+    if (restorePreferences && backup.theme) applyTheme(backup.theme);
+    renderPresets();
+    renderHistory(true);
+    return { sessions: merged.count, presets: setups.count };
   }
   function saveSession() {
     if (state === 'ready') return;
     if (!sessionId) { sessionId = newId(); createdAt = Date.now(); }
     const saved = {
       version: 1, id: sessionId, createdAt, state, goal, unit,
-      checkpoints: checkpoints.slice(), activity: activityName,
+      checkpoints: checkpoints.slice(), activity: activityName, notes: sessionNotes,
       elapsed: elapsed(), savedAt: Date.now(),
     };
     let historySaved = false;
@@ -371,6 +635,7 @@
     goal = saved.goal;
     unit = saved.unit;
     activityName = saved.activity;
+    sessionNotes = notesOf(saved);
     checkpoints = saved.checkpoints.slice();
     accumulated = saved.elapsed + (restoreClock && state === 'running' ? Math.max(0, Date.now() - saved.savedAt) : 0);
     anchor = performance.now();
@@ -378,6 +643,7 @@
     el('goal').value = goal;
     el('unit').value = unit;
     el('activity').value = activityName;
+    el('notes').value = sessionNotes;
   }
   function restoreSession() {
     try { sessions = readHistory(); } catch { /* Existing active sessions can still be restored. */ }
@@ -412,6 +678,7 @@
     goal = config.goal;
     unit = config.unit;
     activityName = config.activity;
+    sessionNotes = notesOf(config);
     checkpoints = [0];
     accumulated = 0;
     anchor = performance.now();
@@ -420,6 +687,7 @@
     el('goal').value = goal;
     el('unit').value = unit;
     el('activity').value = activityName;
+    el('notes').value = sessionNotes;
     message(activityName || 'Session started.');
     render();
   }
@@ -438,7 +706,7 @@
     if (!el('history').open) return;
     // Don't rebuild focused controls when the live clock ticks.
     const signature = JSON.stringify(sessions.map(saved =>
-      [saved.id, saved.state, saved.goal, saved.unit, saved.activity, saved.checkpoints, saved.id === sessionId ? null : saved.elapsed]));
+      [saved.id, saved.state, saved.goal, saved.unit, saved.activity, saved.notes, saved.checkpoints, saved.id === sessionId ? null : saved.elapsed]));
     if (!force && signature === historySignature) {
       if (el('history-current-time')) text('history-current-time', duration(elapsed()));
       return;
@@ -460,6 +728,7 @@
         makeElement('span', '', ` · ${status}${saved.id === sessionId ? ' · Current' : ''}`),
       );
       row.append(meta);
+      if (notesOf(saved)) row.append(makeElement('p', 'saved-note muted', notesOf(saved)));
       const actions = makeElement('div', 'history-actions');
       for (const [action, label] of [['edit', 'Review / edit'], ['resume', 'Resume'], ['restart', 'Restart']]) {
         const button = makeElement('button', '', label);
@@ -497,10 +766,12 @@
     el('edit-activity').value = saved.activity;
     el('edit-unit').value = saved.unit;
     el('edit-goal').value = saved.goal;
+    el('edit-notes').value = notesOf(saved);
     const last = saved.checkpoints[saved.checkpoints.length - 1];
     el('edit-current').value = Number(((saved.elapsed - last) / 1000).toFixed(3));
     el('unit-times').replaceChildren();
     saved.checkpoints.slice(1).forEach((value, i) => addUnitTime(value - saved.checkpoints[i]));
+    renderPaceChart();
     text('editor-error', '');
     el('session-editor').showModal();
   }
@@ -513,11 +784,12 @@
     for (const time of changes.times) points.push(points[points.length - 1] + time);
     const updated = {
       ...saved, activity: changes.activity.trim(), unit: changes.unit.trim(), goal: changes.goal,
+      notes: changes.notes === undefined ? notesOf(saved) : changes.notes,
       checkpoints: points, elapsed: points[points.length - 1] + changes.current,
       state: changes.times.length === changes.goal ? 'complete' : 'paused', savedAt: Date.now(),
     };
     if (!changes.times.every(time => Number.isFinite(time) && time >= 0) ||
-        !Number.isFinite(changes.current) || changes.current < 0 || !validSession(updated)) return 'Enter valid unit names, goals, and non-negative times.';
+         !Number.isFinite(changes.current) || changes.current < 0 || typeof updated.notes !== 'string' || updated.notes.length > 4000 || !validSession(updated)) return 'Enter valid unit names, goals, and non-negative times.';
     try { writeHistory(updated); }
     catch { return 'Changes could not be saved. Browser storage is unavailable or full.'; }
     if (id === sessionId) {
@@ -531,6 +803,7 @@
   function render() {
     saveSession();
     renderHistory();
+    syncWakeLock();
     const done = checkpoints.length - 1;
     const left = goal - done;
     const now = elapsed();
@@ -545,6 +818,8 @@
     text('clock-label', left ? 'Time on this unit' : 'Complete');
     text('total', duration(now));
     for (const id of ['goal', 'activity', 'unit']) el(id).disabled = active;
+    el('notes').disabled = state === 'ready';
+    el('notes').placeholder = state === 'ready' ? 'Start a session to add notes.' : 'Where to continue, reminders…';
     el('done').disabled = state !== 'running';
     el('pause').disabled = !active;
     el('undo').disabled = done === 0;
@@ -599,7 +874,7 @@
       if (!el('goal').reportValidity() || !el('unit').reportValidity()) return;
       if (!el('unit').value.trim()) { el('unit').focus(); message('Enter a unit name.'); return; }
       if (checkpoints.length > 1 && !confirm('Start fresh? The current session will remain in history.')) return;
-      startSession({ goal: Number(el('goal').value), unit: el('unit').value.trim(), activity: el('activity').value.trim() });
+      startSession({ goal: Number(el('goal').value), unit: el('unit').value.trim(), activity: el('activity').value.trim(), notes: el('notes').value });
       return;
     }
     render();
@@ -648,17 +923,84 @@
     goal = 20;
     unit = 'units';
     activityName = '';
+    sessionNotes = '';
     checkpoints = [0];
     accumulated = 0;
     el('goal').value = goal;
     el('unit').value = unit;
     el('activity').value = '';
+    el('notes').value = '';
     try { localStorage.removeItem('pace-session'); } catch { /* History remains available in memory. */ }
     message('Start session to begin.');
     render();
   });
-  el('add-unit').addEventListener('click', () => addUnitTime());
-  el('remove-unit').addEventListener('click', () => el('unit-times').lastElementChild?.remove());
+  el('notes').addEventListener('input', () => {
+    sessionNotes = el('notes').value;
+    saveSession();
+    renderHistory();
+  });
+  el('preset').addEventListener('change', () => {
+    el('start-preset').disabled = el('remove-preset').disabled = !el('preset').value;
+  });
+  el('save-preset').addEventListener('click', () => {
+    if (!el('goal').reportValidity() || !el('unit').reportValidity()) return;
+    const error = savePreset({ activity: el('activity').value.trim(), unit: el('unit').value.trim(), goal: Number(el('goal').value) });
+    text('preset-status', error || 'Setup saved.');
+  });
+  el('start-preset').addEventListener('click', () => {
+    const preset = presets.find(item => item.id === el('preset').value);
+    if (preset) startSession(preset);
+  });
+  el('remove-preset').addEventListener('click', () => {
+    const id = el('preset').value;
+    if (!id || !confirm('Remove this preset? Saved sessions will be kept.')) return;
+    const next = latestPresets().filter(item => item.id !== id);
+    try { localStorage.setItem('pace-presets', JSON.stringify({ version: 1, presets: next })); }
+    catch { text('preset-status', 'Preset could not be removed. Browser storage is unavailable.'); return; }
+    presets = next;
+    renderPresets();
+    text('preset-status', 'Preset removed.');
+  });
+  for (const [id, key] of [['show-quotes', 'quotes'], ['show-sparkles', 'sparkles'], ['keep-awake', 'awake']]) {
+    el(id).addEventListener('change', () => {
+      settings[key] = el(id).checked;
+      wakeBlocked = false;
+      applySettings();
+      if (key === 'quotes' && settings.quotes) rotateQuote();
+      try {
+        localStorage.setItem('pace-settings', JSON.stringify({ version: 1, settings }));
+        text('backup-status', 'Settings saved.');
+      } catch { text('backup-status', 'Settings not saved: browser storage unavailable or full.'); }
+    });
+  }
+  el('export-backup').addEventListener('click', () => {
+    try {
+      const backup = new Blob([JSON.stringify(createBackup(), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(backup);
+      const link = makeElement('a');
+      link.href = url;
+      link.download = `pace-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      text('backup-status', 'Backup download started.');
+    } catch { text('backup-status', 'Backup could not be downloaded. Try again.'); }
+  });
+  el('import-backup').addEventListener('click', () => el('backup-file').click());
+  el('backup-file').addEventListener('change', async () => {
+    const file = el('backup-file').files[0];
+    if (!file) return;
+    try {
+      if (file.size > 10 * 1024 * 1024) throw new Error('Backup must be smaller than 10 MB.');
+      const added = importBackup(await file.text(), el('restore-preferences').checked);
+      text('backup-status', `Imported ${added.sessions} session${added.sessions === 1 ? '' : 's'} and ${added.presets} preset${added.presets === 1 ? '' : 's'}. Existing data kept.`);
+    } catch (error) { text('backup-status', error instanceof SyntaxError ? 'Invalid JSON backup.' : error.message); }
+    finally { el('backup-file').value = ''; }
+  });
+  el('add-unit').addEventListener('click', () => { addUnitTime(); renderPaceChart(); });
+  el('remove-unit').addEventListener('click', () => { el('unit-times').lastElementChild?.remove(); renderPaceChart(); });
+  el('unit-times').addEventListener('input', renderPaceChart);
   el('cancel-edit').addEventListener('click', () => el('session-editor').close());
   el('edit-form').addEventListener('submit', event => {
     event.preventDefault();
@@ -667,6 +1009,7 @@
       activity: el('edit-activity').value,
       unit: el('edit-unit').value,
       goal: Number(el('edit-goal').value),
+      notes: el('edit-notes').value,
       current: Number(el('edit-current').value) * 1000,
       times: Array.from(el('unit-times').querySelectorAll('input'), input => Number(input.value) * 1000),
     });
@@ -719,11 +1062,18 @@
       message('Offline setup failed. Reload while online to retry.');
     });
   }
+  readExtras();
+  renderPresets();
+  applySettings();
+  rotateQuote();
   restoreSession();
   render();
-  window.addEventListener('pagehide', saveSession);
+  window.addEventListener('pagehide', () => { pageActive = false; saveSession(); releaseWakeLock(); });
+  window.addEventListener('pageshow', () => { pageActive = true; wakeBlocked = false; render(); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') saveSession();
+    else wakeBlocked = false;
+    syncWakeLock();
   });
   setInterval(render, 1000);
 </script>

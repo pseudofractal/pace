@@ -164,6 +164,103 @@ async function main() {
     await send('Emulation.setEmulatedMedia', {features: [{name:'prefers-reduced-motion', value:'reduce'}]});
     await evaluate('celebrate(true)');
     assert.equal(await evaluate('document.getElementById("sparkles").childElementCount'), 0);
+    await send('Emulation.setEmulatedMedia', {features: []});
+
+    const originalId = await evaluate('sessionId');
+    await evaluate(`(() => {
+      const get = id => document.getElementById(id);
+      get('options').open = true;
+      document.querySelector('.extras').open = true;
+      get('notes').value = 'Resume at exercise 2.\\n<strong>Literal note</strong>';
+      get('notes').dispatchEvent(new Event('input'));
+      if (state !== 'paused') throw Error('Notes must not change timer state');
+      editSession(sessionId);
+      if (!get('pace-chart').querySelector('polyline') || !get('chart-summary').textContent.includes('1 unit')) throw Error('Pace chart');
+      get('edit-notes').value += ' Edited';
+      get('edit-form').requestSubmit();
+      if (!get('notes').value.endsWith('Edited')) throw Error('Note editing');
+      if (get('history-list').querySelector('.saved-note strong')) throw Error('Notes must be plain text');
+      get('save-preset').click(); get('save-preset').click();
+      if (presets.length !== 1) throw Error('Preset deduplication');
+      const previous = sessionId;
+      get('start-preset').click();
+      if (sessionId === previous || checkpoints.length !== 1 || get('notes').value !== '') throw Error('Start preset');
+      get('pause').click(); resumeSession(previous); get('pause').click();
+      for (const id of ['show-quotes', 'show-sparkles']) {
+        get(id).checked = false; get(id).dispatchEvent(new Event('change'));
+      }
+      const quote = get('quote').textContent; rotateQuote();
+      if (!get('quote').hidden || get('quote').textContent !== quote) throw Error('Quote setting');
+      celebrate(true);
+      if (get('sparkles').childElementCount !== 0) throw Error('Sparkle setting');
+    })()`);
+    const downloads = path.join(profile, 'downloads');
+    fs.mkdirSync(downloads);
+    await send('Browser.setDownloadBehavior', {behavior: 'allow', downloadPath: downloads});
+    await evaluate('document.getElementById("export-backup").click()');
+    let backupPath;
+    for (let attempt = 0; attempt < 100 && !backupPath; attempt++) {
+      const name = fs.readdirSync(downloads).find(file => file.endsWith('.json'));
+      if (name) backupPath = path.join(downloads, name);
+      else await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    assert.ok(backupPath, 'Backup downloads as a JSON file');
+    const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+    assert.equal(backup.app, 'pace');
+    assert.equal(backup.presets.length, 1);
+    assert.ok(backup.sessions.some(saved => saved.notes.includes('<strong>Literal note</strong> Edited')));
+    await load('Page.reload');
+    assert.equal(await evaluate('sessionId'), originalId);
+    assert.equal(await evaluate('document.getElementById("quote").hidden'), true);
+    assert.equal(await evaluate('document.getElementById("show-sparkles").checked'), false);
+    assert.equal(await evaluate('document.getElementById("notes").value.endsWith("Edited")'), true);
+    await evaluate(`(() => {
+      document.getElementById('options').open = true;
+      document.querySelector('.extras').open = true;
+      const originalConfirm = window.confirm; window.confirm = () => true;
+      document.getElementById('preset').value = presets[0].id;
+      document.getElementById('preset').dispatchEvent(new Event('change'));
+      document.getElementById('remove-preset').click(); window.confirm = originalConfirm;
+    })()`);
+    assert.equal(await evaluate('presets.length'), 0);
+    const upload = async contents => evaluate(`(() => {
+      const files = new DataTransfer();
+      files.items.add(new File([${JSON.stringify(contents)}], 'backup.json', {type:'application/json'}));
+      const input = document.getElementById('backup-file'); input.files = files.files; input.dispatchEvent(new Event('change'));
+    })()`);
+    await upload('not json');
+    await waitFor('document.getElementById("backup-status").textContent === "Invalid JSON backup."');
+    await upload(JSON.stringify(backup));
+    await waitFor('document.getElementById("backup-status").textContent.includes("Imported 0 sessions and 1 preset.")');
+    await upload(JSON.stringify(backup));
+    await waitFor('document.getElementById("backup-status").textContent.includes("Imported 0 sessions and 0 presets")');
+    assert.equal(await evaluate('sessionId'), originalId);
+    assert.equal(await evaluate('state'), 'paused');
+
+    // Exercise the browser event wiring with a deterministic wake-lock sentinel.
+    await evaluate(`(() => {
+      window.originalWakeDescriptor = Object.getOwnPropertyDescriptor(navigator, 'wakeLock');
+      window.testWakeRequests = 0;
+      Object.defineProperty(navigator, 'wakeLock', {configurable:true,value:{async request() {
+        window.testWakeRequests++;
+        window.testWakeSentinel = {released:false,addEventListener(){},async release(){this.released=true;}};
+        return window.testWakeSentinel;
+      }}});
+      applySettings();
+      const toggle = document.getElementById('keep-awake'); toggle.checked = true; toggle.dispatchEvent(new Event('change'));
+      document.getElementById('pause').click();
+    })()`);
+    await waitFor('screenLock !== null');
+    assert.equal(await evaluate('window.testWakeRequests'), 1);
+    await evaluate('document.getElementById("pause").click()');
+    await waitFor('window.testWakeSentinel.released');
+    await evaluate(`(() => {
+      const toggle = document.getElementById('keep-awake'); toggle.checked = false; toggle.dispatchEvent(new Event('change'));
+      if (window.originalWakeDescriptor) Object.defineProperty(navigator, 'wakeLock', window.originalWakeDescriptor);
+      else delete navigator.wakeLock;
+      document.getElementById('show-quotes').checked = true;
+      document.getElementById('show-quotes').dispatchEvent(new Event('change'));
+    })()`);
 
     for (const [width, height] of [[320,640], [360,800], [412,915], [915,412]]) {
       await send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor:1, mobile:true});
@@ -172,15 +269,21 @@ async function main() {
       assert.equal(await evaluate('document.getElementById("session-editor").scrollWidth <= document.getElementById("session-editor").clientWidth'), true);
       await evaluate('document.getElementById("session-editor").close()');
     }
+    const savedCount = await evaluate('sessions.length');
     await send('Network.emulateNetworkConditions', {offline:true, latency:0, downloadThroughput:-1, uploadThroughput:-1});
     await load('Page.reload');
     assert.equal(await evaluate('state'), 'paused');
-    assert.equal(await evaluate('sessions.length'), 2);
+    assert.equal(await evaluate('sessions.length'), savedCount);
     assert.equal(await evaluate('document.getElementById("progress-text").textContent'), '1 of 3 exercises finished');
     assert.equal(await evaluate(`fetch('./icon-192.png').then(response => response.ok)`), true);
+    assert.equal(await evaluate('document.getElementById("notes").value.endsWith("Edited")'), true);
+    assert.equal(await evaluate('presets.length'), 1);
+    const offlineImport = await evaluate('importBackup(JSON.stringify(createBackup()))');
+    assert.equal(offlineImport.sessions, 0, 'Backup round trips work offline without duplication');
+    assert.equal(offlineImport.presets, 0);
     assert.equal(await evaluate(`(() => {const before = el('quote').textContent; rotateQuote(); return el('quote').textContent !== before;})()`), true);
     assert.deepEqual(errors, []);
-    console.log('Browser checks passed: uninterrupted upgrades, refresh, history/editor, mobile layouts, PWA/offline, and effects.');
+    console.log('Browser checks passed: uninterrupted upgrades, backups/download/import, presets, notes/chart, settings, wake lock, mobile layouts, and offline use.');
   } finally {
     clearTimeout(watchdog);
     if (socket) socket.close();

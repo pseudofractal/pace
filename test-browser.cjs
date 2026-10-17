@@ -469,7 +469,8 @@ async function main() {
     }
     server.closeAllConnections();
     server.close();
-    fs.rmSync(profile, {recursive:true, force:true});
+    // Chrome subprocesses can briefly keep writing after the parent exits.
+    fs.rmSync(profile, {recursive:true, force:true, maxRetries:5});
   }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

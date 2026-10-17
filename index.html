@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en" data-theme="mocha">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Track units completed, time per unit, and estimated finish time.">
+  <meta name="theme-color" content="#1e1e2e">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <title>Pace</title>
+  <style>
+    :root { color-scheme: dark; --base: #1e1e2e; --mantle: #181825; --surface: #313244; --overlay: #585b70; --text: #cdd6f4; --muted: #a6adc8; --accent: #cba6f7; --green: #a6e3a1; --peach: #fab387; font-family: "Segoe UI", system-ui, sans-serif; color: var(--text); background: var(--base); }
+    [data-theme="latte"] { color-scheme: light; --base: #eff1f5; --mantle: #e6e9ef; --surface: #ccd0da; --overlay: #9ca0b0; --text: #4c4f69; --muted: #5c5f77; --accent: #8839ef; --green: #40a02b; --peach: #fe640b; }
+    [data-theme="frappe"] { --base: #303446; --mantle: #292c3c; --surface: #414559; --overlay: #737994; --text: #c6d0f5; --muted: #b5bfe2; --accent: #ca9ee6; --green: #a6d189; --peach: #ef9f76; }
+    [data-theme="macchiato"] { --base: #24273a; --mantle: #1e2030; --surface: #363a4f; --overlay: #6e738d; --text: #cad3f5; --muted: #b8c0e0; --accent: #c6a0f6; --green: #a6da95; --peach: #f5a97f; }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; padding: max(28px, env(safe-area-inset-top)) max(28px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(28px, env(safe-area-inset-left)); min-height: 100svh; }
+    main { max-width: 1100px; margin: auto; }
+    .nav { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding-bottom: 26px; border-bottom: 1px solid var(--surface); }
+    .brand { font-size: 1.4rem; font-weight: 750; letter-spacing: -.06em; display: flex; gap: 10px; align-items: center; margin: 0; }
+    .brand-mark { display: inline-flex; align-items: end; gap: 4px; height: 24px; }
+    .brand-mark i { width: 5px; height: 12px; background: var(--accent); border-radius: 3px; }
+    .brand-mark i:nth-child(2) { height: 23px; }
+    .brand-mark i:nth-child(3) { height: 17px; }
+    .theme-picker { display: flex; align-items: center; gap: 10px; font-size: .8rem; color: var(--muted); }
+    .nav-actions { display: flex; gap: 12px; align-items: center; }
+    #install { padding: 9px 12px; min-height: 44px; }
+    .quote { margin: 24px 0 0; text-align: center; color: var(--muted); font-size: .95rem; font-style: italic; line-height: 1.6; }
+    #sparkles { position: fixed; inset: 0; z-index: 10; pointer-events: none; overflow: hidden; }
+    .sparkle { position: absolute; line-height: 1; text-shadow: 0 0 12px currentColor; will-change: transform, opacity; }
+    @media (prefers-reduced-motion: reduce) { #sparkles { display: none; } }
+    p { line-height: 1.6; }
+    .muted { color: var(--muted); }
+    .card { background: var(--mantle); border: 1px solid var(--surface); border-radius: 18px; padding: 26px; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: 20px; align-items: start; margin-top: 24px; }
+    .sidebar { display: grid; gap: 20px; }
+    .section-heading { font-size: .72rem; letter-spacing: .13em; text-transform: uppercase; color: var(--muted); margin: 0 0 22px; }
+    .topline, .setup, .progress-label { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .setup { display: grid; grid-template-columns: 1fr 1fr 100px; gap: 14px; margin-top: 22px; }
+    .field { display: grid; gap: 8px; min-width: 0; }
+    label { font-size: .8rem; color: var(--muted); }
+    input, select { font: inherit; width: 100%; min-width: 0; min-height: 44px; padding: 11px; border: 1px solid var(--surface); border-radius: 8px; color: var(--text); background: var(--base); }
+    select { width: auto; font-size: .8rem; }
+    input:disabled { opacity: .65; }
+    .badge { border-radius: 100px; padding: 7px 12px; font-size: .75rem; color: var(--accent); background: var(--surface); }
+    [data-state="running"] .badge { color: var(--green); }
+    [data-state="paused"] .badge { color: var(--peach); }
+    .progress-label { margin-top: 30px; margin-bottom: 12px; }
+    .progress-label { font-size: .85rem; }
+    progress { display: block; width: 100%; height: 6px; border: none; border-radius: 20px; overflow: hidden; background: var(--surface); accent-color: var(--accent); }
+    progress::-webkit-progress-bar { background: var(--surface); }
+    progress::-webkit-progress-value { background: var(--accent); border-radius: 20px; }
+    progress::-moz-progress-bar { background: var(--accent); }
+    .clock-area { text-align: center; padding: 32px 0; }
+    .clock { font-size: clamp(2.8rem, 7vw, 4.7rem); font-weight: 400; letter-spacing: -.055em; margin: 8px 0 12px; }
+    .number { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    button { display: flex; justify-content: center; align-items: center; gap: 8px; font: inherit; font-size: .85rem; font-weight: 600; border: 1px solid var(--surface); border-radius: 10px; padding: 14px 10px; background: var(--base); color: var(--text); cursor: pointer; min-height: 48px; }
+    button:hover:enabled { border-color: var(--accent); }
+    button.primary { background: var(--accent); color: var(--mantle); border-color: var(--accent); }
+    button.primary:hover:enabled { filter: brightness(1.08); }
+    button:disabled { opacity: .45; cursor: default; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+    kbd { flex-shrink: 0; font: inherit; font-size: .75rem; border: 1px solid currentColor; border-radius: 4px; padding: 1px 5px; opacity: .8; }
+    #message { min-height: 1.6em; margin: 18px 0 0; text-align: center; font-size: .8rem; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 18px; margin: 0; }
+    .stat dt { font-size: .8rem; color: var(--muted); margin-bottom: 10px; }
+    .stat dd { margin: 0; font-size: 1.15rem; }
+    .estimate { display: grid; gap: 26px; }
+    .estimate h3 { font-size: .8rem; font-weight: 400; color: var(--muted); margin: 0 0 10px; }
+    .estimate .value { font-size: 1.4rem; margin: 0; color: var(--green); }
+    #estimate-note { margin: 16px 0 0; font-size: .85rem; }
+    footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: .75rem; margin: 26px 0 12px; padding-top: 20px; border-top: 1px solid var(--surface); }
+    footer a { color: var(--muted); text-underline-offset: 3px; }
+    @media (max-width: 820px) { .workspace { grid-template-columns: 1fr; } .sidebar { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 540px) {
+      body { padding: max(18px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+      .nav { flex-wrap: wrap; gap: 12px; padding-bottom: 18px; }
+      .nav-actions { gap: 8px; flex-wrap: wrap; }
+      .card { padding: 20px; }
+      .sidebar { grid-template-columns: 1fr; }
+      .setup { grid-template-columns: 1fr 85px; }
+      .field:first-child { grid-column: 1 / -1; }
+      .theme-picker label { display: none; }
+      .controls { gap: 8px; }
+      .clock { font-size: clamp(2.6rem, 11vw, 4rem); }
+      input, select { font-size: 16px; min-height: 44px; }
+      .estimate .value { overflow-wrap: anywhere; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <nav class="nav" aria-label="App settings">
+    <h1 class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Pace</h1>
+    <div class="nav-actions">
+      <button type="button" id="install" hidden>Install</button>
+      <div class="theme-picker"><label for="theme">Catppuccin</label><select id="theme" aria-label="Color theme"><option value="mocha">Mocha</option><option value="macchiato">Macchiato</option><option value="frappe">Frappé</option><option value="latte">Latte</option></select></div>
+    </div>
+  </nav>
+  <blockquote class="quote" id="quote">“Small steps still move you forward.”</blockquote>
+  <div class="workspace">
+  <section class="card" aria-label="Your session">
+    <div class="topline">
+      <h2 class="section-heading" style="margin:0">Session</h2>
+      <span class="badge" id="status">Ready</span>
+    </div>
+    <div class="setup">
+      <div class="field"><label for="activity">Activity</label><input id="activity" type="text" maxlength="80" placeholder="Optional"></div>
+      <div class="field"><label for="unit">Unit name (plural)</label><input id="unit" type="text" maxlength="32" placeholder="e.g. pages" value="units" required></div>
+      <div class="field"><label for="goal">Goal</label><input id="goal" type="number" inputmode="numeric" min="1" max="999999" step="1" value="20" required></div>
+    </div>
+    <div class="progress-label"><strong id="progress-text">0 of 20 units finished</strong><span id="remaining">20 left</span></div>
+    <progress id="progress" value="0" max="20" aria-label="Units completed"></progress>
+    <div class="clock-area">
+      <div class="muted" id="clock-label">Time on this unit</div>
+      <div class="clock number" id="current">00:00:00</div>
+      <div class="muted">Total active time <span class="number" id="total">00:00:00</span></div>
+    </div>
+    <div class="controls">
+      <button type="button" id="done" class="primary" disabled>Unit finished <kbd>P</kbd></button>
+      <button type="button" id="pause" disabled>Pause <kbd>T</kbd></button>
+      <button type="button" id="undo" disabled>Undo last unit <kbd>L</kbd></button>
+      <button type="button" id="session">Start session <kbd>S</kbd></button>
+    </div>
+    <p id="message" class="muted" role="status">Start session to begin.</p>
+  </section>
+
+  <aside class="sidebar" aria-label="Session insights">
+  <section class="card" aria-labelledby="stats-heading">
+   <h2 class="section-heading" id="stats-heading">Time per unit</h2>
+  <dl class="stats">
+    <div class="stat"><dt>Last</dt><dd class="number" id="last">—</dd></div>
+    <div class="stat"><dt>Average</dt><dd class="number" id="average">—</dd></div>
+    <div class="stat"><dt>Fastest</dt><dd class="number" id="min">—</dd></div>
+    <div class="stat"><dt>Slowest</dt><dd class="number" id="max">—</dd></div>
+  </dl>
+  </section>
+
+  <section class="card" aria-label="Finish estimate">
+    <h2 class="section-heading">Estimate</h2>
+    <div class="estimate">
+      <div><h3>Estimated time left</h3><p class="value number" id="eta">—</p></div>
+      <div><h3>Estimated finish time</h3><p class="value number" id="finish">—</p></div>
+    </div>
+    <p class="muted" id="estimate-note">Available after the first unit.</p>
+  </section>
+  </aside>
+  </div>
+  <footer class="muted"><span id="storage-status">Session saves on this device.</span><a href="https://catppuccin.com/" target="_blank" rel="noreferrer">Catppuccin palette</a></footer>
+</main>
+<div id="sparkles" aria-hidden="true"></div>
+<script>
+  'use strict';
+  const el = id => document.getElementById(id);
+  let state = 'ready';
+  let goal = 20;
+  let unit = 'units';
+  let checkpoints = [0];
+  let accumulated = 0;
+  let anchor = 0;
+  let anchorWall = 0;
+
+  // Wall time also counts Android device sleep, when performance.now may stop.
+  const elapsed = () => accumulated + (state === 'running'
+    ? Math.max(0, performance.now() - anchor, Date.now() - anchorWall) : 0);
+  const duration = ms => {
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
+      .map(n => String(n).padStart(2, '0')).join(':');
+  };
+  // Only changed text nodes are updated; the dashboard never clears or flashes.
+  function text(id, value) {
+    if (el(id).textContent !== value) el(id).textContent = value;
+  }
+  function message(value) { text('message', value); }
+  const quotes = [
+    'Small steps still move you forward.',
+    'You only need to take the next step.',
+    'A little progress is still progress.',
+    'Give this moment your attention, not your whole mountain.',
+    'Your pace does not have to match anyone else’s.',
+    'One finished thing is one less thing ahead.',
+    'You can begin again without beginning from nothing.',
+    'Make room for rest. Then make room for the next step.',
+    'What feels small today can add up to something big.',
+    'Keep your focus on the step in front of you.',
+    'You do not have to feel ready to begin.',
+    'Curiosity can take you further than certainty.',
+    'You are allowed to be a beginner.',
+    'A difficult moment is not a verdict on your ability.',
+    'Understanding takes time. Give yourself some.',
+    'The work you do quietly still matters.',
+    'An imperfect attempt gives you something to build on.',
+    'You can be proud of the effort before you see the result.',
+    'Some days, showing up is the achievement.',
+    'You do not need to solve everything today.',
+    'Let the first draft be a first draft.',
+    'A mistake is information you did not have before.',
+    'There is no shame in needing another try.',
+    'You have learned difficult things before.',
+    'Being kind to yourself is compatible with being ambitious.',
+    'Give your attention to what you can influence.',
+    'Your worth is not measured by your productivity.',
+    'A break is part of the work, not a failure of it.',
+    'You can care deeply without being hard on yourself.',
+    'The task can be difficult without being impossible.',
+    'Ask the question. Try the idea. See what happens.',
+    'You do not need an audience for your effort to count.',
+    'You can change your approach without giving up your goal.',
+    'Learning often feels confusing before it feels clear.',
+    'Make something useful, even if it is not perfect.',
+    'It is okay to finish today with questions left over.',
+    'Your attention is valuable. Spend it deliberately.',
+    'You can return to this with fresh eyes.',
+    'Finishing is satisfying. Learning is lasting.',
+    'You deserve patience from yourself, too.',
+  ];
+  let quoteIndex = Math.floor(Math.random() * quotes.length);
+  function rotateQuote() {
+    text('quote', `“${quotes[quoteIndex]}”`);
+    quoteIndex = (quoteIndex + 1) % quotes.length;
+  }
+  rotateQuote();
+  setInterval(rotateQuote, 120000);
+  function freeze(nextState) {
+    accumulated = elapsed();
+    state = nextState;
+  }
+
+  function celebrate(complete) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const layer = el('sparkles');
+    layer.replaceChildren();
+    const button = el('done').getBoundingClientRect();
+    const colors = ['var(--accent)', 'var(--green)', 'var(--peach)', 'var(--text)'];
+    for (let i = 0; i < (complete ? 100 : 18); i++) {
+      const star = document.createElement('span');
+      star.className = 'sparkle';
+      star.textContent = i % 3 ? '✦' : '✧';
+      star.style.color = colors[i % colors.length];
+      star.style.fontSize = `${10 + Math.random() * (complete ? 22 : 12)}px`;
+      star.style.left = `${complete ? Math.random() * window.innerWidth : button.left + button.width / 2}px`;
+      star.style.top = `${complete ? Math.random() * window.innerHeight * .85 : button.top + button.height / 2}px`;
+      layer.append(star);
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 60 + Math.random() * (complete ? 200 : 110);
+      const x = Math.cos(angle) * distance;
+      const y = Math.sin(angle) * distance - 60;
+      const animation = star.animate([
+        { transform: 'translate(-50%, -50%) scale(0)', opacity: 0 },
+        { opacity: 1, offset: .15 },
+        { transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px)) rotate(90deg) scale(1)`, opacity: 0 },
+      ], {
+        duration: (complete ? 1800 : 800) + Math.random() * 500,
+        delay: Math.random() * (complete ? 350 : 100),
+        easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'both',
+      });
+      animation.onfinish = () => star.remove();
+    }
+  }
+
+  function saveSession() {
+    try {
+      if (state === 'complete') {
+        localStorage.removeItem('pace-session');
+        text('storage-status', 'Saved session cleared.');
+      } else if (state !== 'ready') {
+        localStorage.setItem('pace-session', JSON.stringify({
+          version: 1, state, goal, unit, checkpoints,
+          activity: el('activity').value,
+          elapsed: elapsed(), savedAt: Date.now(),
+        }));
+        text('storage-status', 'Session saved on this device.');
+      }
+    } catch {
+      text('storage-status', 'Session not saved: browser storage unavailable.');
+    }
+  }
+
+  function restoreSession() {
+    try {
+      const raw = localStorage.getItem('pace-session');
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved || saved.version !== 1 || !['running', 'paused', 'stopped'].includes(saved.state) ||
+          !Number.isInteger(saved.goal) || saved.goal < 1 || saved.goal > 999999 ||
+          typeof saved.unit !== 'string' || !saved.unit.trim() || saved.unit.length > 32 ||
+          typeof saved.activity !== 'string' || saved.activity.length > 80 ||
+          !Number.isFinite(saved.elapsed) || saved.elapsed < 0 ||
+          !Number.isFinite(saved.savedAt) || saved.savedAt < 0 ||
+          !Array.isArray(saved.checkpoints) || saved.checkpoints.length < 1 ||
+          saved.checkpoints.length > saved.goal || saved.checkpoints[0] !== 0 ||
+          !saved.checkpoints.every((value, i, values) => Number.isFinite(value) && value >= 0 &&
+            value <= saved.elapsed && (i === 0 || value >= values[i - 1]))) {
+        throw new Error('Invalid saved session');
+      }
+      state = saved.state;
+      goal = saved.goal;
+      unit = saved.unit;
+      checkpoints = saved.checkpoints;
+      accumulated = saved.elapsed + (state === 'running' ? Math.max(0, Date.now() - saved.savedAt) : 0);
+      anchor = performance.now();
+      anchorWall = Date.now();
+      el('goal').value = goal;
+      el('unit').value = unit;
+      el('activity').value = saved.activity;
+      message('Session restored.');
+    } catch {
+      try { localStorage.removeItem('pace-session'); } catch { /* Storage may be disabled. */ }
+    }
+  }
+
+  function render() {
+    saveSession();
+    const done = checkpoints.length - 1;
+    const left = goal - done;
+    const now = elapsed();
+    const active = state === 'running' || state === 'paused';
+    document.documentElement.dataset.state = state;
+    text('status', {ready: 'Ready', running: 'Running', paused: 'Paused', stopped: 'Stopped', complete: 'Complete'}[state]);
+    text('progress-text', `${done} of ${goal} ${unit} finished`);
+    text('remaining', `${left} left`);
+    el('progress').max = goal;
+    el('progress').value = done;
+    text('current', duration(left ? now - checkpoints[done] : 0));
+    text('clock-label', left ? 'Time on this unit' : 'Complete');
+    text('total', duration(now));
+    for (const id of ['goal', 'activity', 'unit']) el(id).disabled = active;
+    el('done').disabled = state !== 'running';
+    el('pause').disabled = !active;
+    el('undo').disabled = done === 0;
+    // Preserve the key labels and focus by changing only the button's text node.
+    const buttonLabel = (id, value) => {
+      if (el(id).firstChild.nodeValue !== value) el(id).firstChild.nodeValue = value;
+    };
+    buttonLabel('pause', state === 'paused' ? 'Resume ' : 'Pause ');
+    buttonLabel('session', active ? 'Stop session ' : state === 'ready' ? 'Start session ' : 'Start fresh ');
+
+    if (!done) {
+      for (const id of ['last', 'average', 'min', 'max', 'eta', 'finish']) text(id, '—');
+      text('estimate-note', 'Available after the first unit.');
+      return;
+    }
+    const times = checkpoints.slice(1).map((value, i) => value - checkpoints[i]);
+    const average = checkpoints[done] / done;
+    text('last', duration(times[times.length - 1]));
+    text('average', duration(average));
+    text('min', duration(times.reduce((a, b) => Math.min(a, b))));
+    text('max', duration(times.reduce((a, b) => Math.max(a, b))));
+    const remaining = left ? Math.max(0, average * left - (now - checkpoints[done])) : 0;
+    text('eta', duration(Math.ceil(remaining / 1000) * 1000));
+    if (state === 'stopped') {
+      text('finish', 'Session stopped');
+      text('estimate-note', 'Start fresh resets progress and timings.');
+    } else if (state === 'complete') {
+      text('finish', 'Complete');
+      text('estimate-note', '');
+    } else {
+      const finish = new Date(Date.now() + remaining);
+      text('finish', finish.toLocaleString(undefined, {weekday: 'short', hour: 'numeric', minute: '2-digit', second: '2-digit'}));
+      text('estimate-note', state === 'paused'
+        ? 'Assumes you resume now.'
+        : 'Based on average unit time.');
+    }
+  }
+
+  el('goal').addEventListener('input', () => {
+    if (state === 'ready' && el('goal').validity.valid) goal = Number(el('goal').value);
+    render();
+  });
+  el('unit').addEventListener('input', () => {
+    if (state === 'ready') unit = el('unit').value.trim() || 'units';
+    render();
+  });
+  el('session').addEventListener('click', () => {
+    if (state === 'running' || state === 'paused') {
+      freeze('stopped');
+      message('Stopped. Results retained.');
+    } else {
+      if (!el('goal').reportValidity() || !el('unit').reportValidity()) return;
+      if (!el('unit').value.trim()) { el('unit').focus(); message('Enter a unit name.'); return; }
+      if (checkpoints.length > 1 && !confirm('Start a fresh session? This resets your completed units and timings.')) return;
+      goal = Number(el('goal').value);
+      unit = el('unit').value.trim();
+      checkpoints = [0];
+      accumulated = 0;
+      anchor = performance.now();
+      anchorWall = Date.now();
+      state = 'running';
+      message(el('activity').value.trim() || 'Session started.');
+    }
+    render();
+  });
+  el('done').addEventListener('click', () => {
+    if (state !== 'running') return;
+    checkpoints.push(elapsed());
+    if (checkpoints.length - 1 === goal) {
+      accumulated = checkpoints[checkpoints.length - 1];
+      state = 'complete';
+      message('Goal complete. Timer stopped.');
+    } else message('Unit recorded.');
+    render();
+    celebrate(state === 'complete');
+  });
+  el('pause').addEventListener('click', () => {
+    if (state === 'running') {
+      freeze('paused');
+      message('Paused. Break time excluded.');
+    } else if (state === 'paused') {
+      anchor = performance.now();
+      anchorWall = Date.now();
+      state = 'running';
+      message('Resumed.');
+    }
+    render();
+  });
+  el('undo').addEventListener('click', () => {
+    if (checkpoints.length === 1) return;
+    checkpoints.pop();
+    if (state === 'complete') state = 'paused';
+    message(`Last unit undone.${state === 'paused' ? ' Paused — press Resume to continue.' : ''}`);
+    render();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.repeat || event.ctrlKey || event.altKey || event.metaKey ||
+        event.target.matches('input, textarea, select, [contenteditable]')) return;
+    const id = {p: 'done', t: 'pause', l: 'undo', s: 'session'}[event.key.toLowerCase()];
+    if (id) {
+      event.preventDefault();
+      el(id).click();
+    }
+  });
+  const themes = ['mocha', 'macchiato', 'frappe', 'latte'];
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = themes.includes(theme) ? theme : 'mocha';
+    el('theme').value = document.documentElement.dataset.theme;
+    document.querySelector('meta[name="theme-color"]').content = {
+      mocha: '#1e1e2e', macchiato: '#24273a', frappe: '#303446', latte: '#eff1f5',
+    }[document.documentElement.dataset.theme];
+  }
+  try { applyTheme(localStorage.getItem('pace-theme')); } catch { applyTheme('mocha'); }
+  el('theme').addEventListener('change', () => {
+    applyTheme(el('theme').value);
+    try { localStorage.setItem('pace-theme', el('theme').value); } catch { /* Works without browser storage too. */ }
+  });
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    installPrompt = event;
+    el('install').hidden = false;
+  });
+  el('install').addEventListener('click', async () => {
+    if (!installPrompt) return;
+    const prompt = installPrompt;
+    installPrompt = null;
+    el('install').hidden = true;
+    try { await prompt.prompt(); } catch { /* Browser menu installation remains available. */ }
+  });
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    el('install').hidden = true;
+  });
+  if ('serviceWorker' in navigator && ['https:', 'http:'].includes(location.protocol)) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      message('Offline setup failed. Reload while online to retry.');
+    });
+  }
+  restoreSession();
+  render();
+  window.addEventListener('pagehide', saveSession);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveSession();
+  });
+  setInterval(render, 1000);
+</script>
+</body>
+</html>

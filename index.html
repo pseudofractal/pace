@@ -861,25 +861,34 @@
     const recentCount = Math.min(5, done);
     const recent = done ? times.slice(-5).reduce((sum, value) => sum + value, 0) / recentCount : null;
     const current = Math.max(0, total - points[done]);
-    // Damped Holt smoothing forecasts a warming-up or tiring pace that flat means miss.
+    // Median level with a Theil-Sen slope: a sliding median of five is the standard
+    // runtime predictor in grid-trace studies, and both statistics shrug off one
+    // interrupted unit that would skew means or least squares.
     const window = times.slice(-5);
     let forecast = null;
     let band = null;
     if (mode === 'recent' && window.length >= 3 && left) {
-      const alpha = 0.4, beta = 0.2, phi = 0.8;
-      let level = window[0], trend = 0, squaredErrors = 0;
-      for (let i = 1; i < window.length; i += 1) {
-        squaredErrors += (window[i] - (level + trend)) ** 2;
-        const previous = level;
-        level = alpha * window[i] + (1 - alpha) * (level + trend);
-        trend = beta * (level - previous) + (1 - beta) * trend;
-      }
-      const forecastUnit = step => Math.max(0, level + phi * (1 - phi ** step) / (1 - phi) * trend);
+      const median = values => {
+        const ordered = [...values].sort((a, b) => a - b);
+        const mid = ordered.length >> 1;
+        return ordered.length % 2 ? ordered[mid] : (ordered[mid - 1] + ordered[mid]) / 2;
+      };
+      const level = median(window);
+      const slopes = [];
+      for (let i = 0; i < window.length - 1; i += 1)
+        for (let j = i + 1; j < window.length; j += 1) slopes.push((window[j] - window[i]) / (j - i));
+      const slope = median(slopes);
+      const phi = 0.8;
+      const dampSum = step => phi * (1 - phi ** step) / (1 - phi);
+      const forecastUnit = step => Math.max(0, level + dampSum(step) * slope);
       let rest = 0;
       for (let step = 2; step <= left; step += 1) rest += forecastUnit(step);
+      // Conformal band: a rank statistic of one-step residuals discards the worst point,
+      // so a single outlier cannot widen the range the way a variance would.
+      const residuals = [...window.map((value, i) => Math.abs(value - (level + dampSum(i) * slope)))].sort((a, b) => a - b);
+      const rank = Math.min(residuals.length, Math.ceil((residuals.length + 1) * 2 / 3));
+      band = residuals[rank - 1] * Math.sqrt(left);
       forecast = { next: forecastUnit(1), remaining: Math.max(0, forecastUnit(1) - current) + rest };
-      // Uncertainty of the remaining sum from recent one-step forecast errors.
-      band = Math.sqrt(squaredErrors / (window.length - 1)) * Math.sqrt(left);
     }
     const pace = mode === 'average' ? average : recent;
     const expectedNext = forecast ? forecast.next : pace;

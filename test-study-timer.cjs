@@ -719,18 +719,26 @@ assert.equal(run(features, 'paceMetrics([0,60000], 300000, 4).remaining'), 12000
 assert.equal(run(features, 'paceMetrics([0,60000], 300000, 4).overrun'), true);
 assert.equal(run(features, 'paceMetrics([0,60000], 60000, 1).overrun'), false);
 
-// Damped Holt recent mode tracks improving and tiring pace; flat means cannot.
+// A median level with a Theil-Sen slope tracks improving and tiring pace; flat means cannot.
 const improvingPoints = [0, 60000, 110000, 150000, 180000, 200000];
 const improving = run(features, `paceMetrics(${JSON.stringify(improvingPoints)}, 200000, 10, 'recent')`);
 assert.equal(run(features, `paceMetrics(${JSON.stringify(improvingPoints)}, 200000, 10, 'average')`).remaining, 200000, 'Whole-session average stays a flat baseline');
-assert.ok(Math.abs(improving.remaining - 106873) < 2, 'Trend-aware ETA beats the flat mean on a warming-up pace');
-assert.ok(Math.abs(improving.forecastNext - 26339) < 2, 'The next-unit forecast follows the improving trend');
-assert.ok(improving.band > 30000 && improving.band < 36000, 'The band reflects recent forecast-error spread');
+assert.ok(Math.abs(improving.remaining - 107571) < 2, 'Trend-aware ETA beats the flat mean on a warming-up pace');
+assert.ok(Math.abs(improving.forecastNext - 32000) < 2, 'The next-unit forecast follows the improving trend');
+assert.ok(improving.band > 38000 && improving.band < 43000, 'The band reflects typical forecast spread');
 const slowingWindow = run(features, `paceMetrics(${JSON.stringify([0, 20000, 50000, 90000, 140000, 200000])}, 200000, 10, 'recent')`);
 assert.ok(slowingWindow.remaining > 200000, 'A tiring pace raises the estimate above the flat mean');
 assert.ok(slowingWindow.band > 0);
 assert.equal(run(features, `paceMetrics(${JSON.stringify(trendPoints)}, 610000, 13, 'recent')`).band, 0, 'A steady window shows no variability band');
 assert.equal(run(features, 'paceMetrics([0,60000,90000], 90000, 5, \'recent\').band'), null, 'Trend estimates wait for at least three units');
+
+// One interrupted unit must not skew the forecast or widen the band.
+const outlierPoints = [0, 40000, 82000, 120000, 520000, 561000];
+const outlier = run(features, `paceMetrics(${JSON.stringify(outlierPoints)}, 561000, 10, 'recent')`);
+assert.ok(outlier.forecastNext > 40000 && outlier.forecastNext < 45000, 'A single spike leaves the median pace nearly unchanged');
+assert.ok(outlier.band < 20000, 'The conformal band discards the single worst residual');
+assert.ok(outlier.remaining < 250000, 'The outlier session estimates far below the flat mean');
+assert.ok(outlier.remaining > run(features, `paceMetrics(${JSON.stringify(outlierPoints)}, 561000, 10, 'average')`).remaining / 4);
 const outlook = (offset, metrics = recentMetrics, state = 'running', finishedAt = null) => run(features,
   `deadlineOutlook(${wall + offset}, ${wall}, ${JSON.stringify(metrics)}, ${JSON.stringify(state)}, ${JSON.stringify(finishedAt)})`);
 assert.equal(outlook(180000).required, 60000);
@@ -775,7 +783,7 @@ const warming = createApp(memoryStorage({
   'pace-session': JSON.stringify(warmingRecord),
   'pace-sessions': JSON.stringify({version: 1, sessions: [warmingRecord]}),
 }));
-assert.equal(warming.node('eta').textContent, '00:01:47 ± 00:00:34', 'The ETA renders the trend forecast with its band');
+assert.equal(warming.node('eta').textContent, '00:01:48 ± 00:00:41', 'The ETA renders the trend forecast with its band');
 assert.ok(warming.node('estimate-note').textContent.includes('pace trend across the last 5 completed units'));
 assert.ok(warming.node('estimate-note').textContent.includes('± range reflects recent pace variability'));
 const marginBeforeBreak = run(planning, 'deadlineOutlook(deadline, Date.now(), paceMetrics(checkpoints, elapsed(), goal, etaMode), state).margin');

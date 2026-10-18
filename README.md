@@ -1,6 +1,6 @@
 # Pace
 
-A progress timer for anything countable. Catppuccin themes, saved sessions, and offline Android PWA support.
+A progress timer for anything countable. Catppuccin themes, saved sessions, and offline Android PWA support. A Focus view keeps the timer, deadline, and pace insights front and center; a Sessions view holds the searchable library, with a fixed control dock on phones.
 
 - **Use:** [pseudofractal.github.io/pace](https://pseudofractal.github.io/pace/) — set a goal and start.
 - **Keys:** `P` complete unit · `L` undo · `T` pause/resume · `S` start/stop.

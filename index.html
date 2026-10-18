@@ -10,266 +10,525 @@
   <link rel="apple-touch-icon" href="./icon-192.png">
   <title>Pace</title>
   <style>
-    :root { color-scheme: dark; --base: #1e1e2e; --mantle: #181825; --surface: #313244; --overlay: #585b70; --text: #cdd6f4; --muted: #a6adc8; --accent: #cba6f7; --green: #a6e3a1; --peach: #fab387; font-family: "Segoe UI", system-ui, sans-serif; color: var(--text); background: var(--base); }
-    [data-theme="latte"] { color-scheme: light; --base: #eff1f5; --mantle: #e6e9ef; --surface: #ccd0da; --overlay: #9ca0b0; --text: #4c4f69; --muted: #5c5f77; --accent: #8839ef; --green: #40a02b; --peach: #fe640b; }
+    :root { color-scheme: dark; --base: #1e1e2e; --mantle: #181825; --surface: #313244; --overlay: #585b70; --text: #cdd6f4; --muted: #a6adc8; --accent: #cba6f7; --green: #a6e3a1; --peach: #fab387; --panel: var(--mantle); --line: color-mix(in srgb, var(--text) 12%, transparent); --good: var(--green); --warning: var(--peach); font-family: "Segoe UI", system-ui, sans-serif; color: var(--text); background: var(--base); }
+    [data-theme="latte"] { color-scheme: light; --base: #eff1f5; --mantle: #e6e9ef; --surface: #ccd0da; --overlay: #9ca0b0; --text: #4c4f69; --muted: #5c5f77; --accent: #8839ef; --green: #40a02b; --peach: #fe640b; --panel: #fff; --good: #286e24; --warning: #9c4719; }
     [data-theme="frappe"] { --base: #303446; --mantle: #292c3c; --surface: #414559; --overlay: #737994; --text: #c6d0f5; --muted: #b5bfe2; --accent: #ca9ee6; --green: #a6d189; --peach: #ef9f76; }
     [data-theme="macchiato"] { --base: #24273a; --mantle: #1e2030; --surface: #363a4f; --overlay: #6e738d; --text: #cad3f5; --muted: #b8c0e0; --accent: #c6a0f6; --green: #a6da95; --peach: #f5a97f; }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
-    body { margin: 0; padding: max(28px, env(safe-area-inset-top)) max(28px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(28px, env(safe-area-inset-left)); min-height: 100svh; }
-    main { max-width: 1100px; margin: auto; }
-    .nav { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding-bottom: 26px; border-bottom: 1px solid var(--surface); }
-    .brand { font-size: 1.4rem; font-weight: 750; letter-spacing: -.06em; display: flex; gap: 10px; align-items: center; margin: 0; }
+    body { margin: 0; min-height: 100svh; background: radial-gradient(ellipse at 10% 0, color-mix(in srgb, var(--accent) 5%, transparent), transparent 45%); }
+    .app-shell { max-width: 1720px; margin: auto; padding: 0 max(24px, env(safe-area-inset-right)) 24px max(24px, env(safe-area-inset-left)); }
+    button, input, select, textarea { font: inherit; }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--base); color: var(--text); font-size: .82rem; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s; }
+    button:hover:enabled { border-color: color-mix(in srgb, var(--accent) 65%, transparent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+    button.primary { background: var(--accent); color: var(--mantle); border-color: var(--accent); }
+    button.primary:hover:enabled { background: var(--accent); filter: brightness(1.06); }
+    button.danger { color: var(--warning); }
+    button:disabled { opacity: .42; cursor: default; }
+    button svg { width: 18px; height: 18px; flex-shrink: 0; order: -1; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    .nav { position: sticky; top: 0; z-index: 15; margin-bottom: 26px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--base) 94%, transparent); backdrop-filter: blur(20px); }
+    .nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 1720px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 16px max(24px, env(safe-area-inset-left)); }
+    .brand { display: flex; gap: 10px; align-items: center; margin: 0; font-size: 1.4rem; font-weight: 750; letter-spacing: -.06em; }
     .brand-mark { display: inline-flex; align-items: end; gap: 4px; height: 24px; }
     .brand-mark i { width: 5px; height: 12px; background: var(--accent); border-radius: 3px; }
     .brand-mark i:nth-child(2) { height: 23px; }
     .brand-mark i:nth-child(3) { height: 17px; }
-    .theme-picker { display: flex; align-items: center; gap: 10px; font-size: .8rem; color: var(--muted); }
-    .nav-actions { display: flex; gap: 12px; align-items: center; }
-    #install { padding: 9px 12px; min-height: 44px; }
-    .quote { margin: 24px 0 0; text-align: center; color: var(--muted); font-size: .95rem; font-style: italic; line-height: 1.6; }
-    #sparkles { position: fixed; inset: 0; z-index: 10; pointer-events: none; overflow: hidden; }
-    .sparkle { position: absolute; line-height: 1; text-shadow: 0 0 12px currentColor; will-change: transform, opacity; }
-    @media (prefers-reduced-motion: reduce) { #sparkles { display: none; } }
+    .view-switch { display: flex; gap: 3px; padding: 4px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--mantle) 80%, transparent); }
+    .view-switch button { min-height: 36px; padding: 8px 22px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: .78rem; }
+    .view-switch button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / .08); }
+    [data-state="running"] #focus-tab::after { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--good); }
+    .tab-count { font-size: .65rem; opacity: .7; }
+    .settings-button { background: transparent; }
+    .icon-button { width: 44px; padding: 0; }
+    .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 24px; }
+    .page-heading h2 { margin: 0; font-size: clamp(1.7rem, 2.7vw, 2.6rem); font-weight: 600; line-height: 1.2; letter-spacing: -.055em; }
     p { line-height: 1.6; }
     .muted { color: var(--muted); }
-    .card { background: var(--mantle); border: 1px solid var(--surface); border-radius: 18px; padding: 26px; }
-    .workspace { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: 20px; align-items: start; margin-top: 24px; }
-    .sidebar { display: grid; gap: 20px; }
-    .section-heading { font-size: .72rem; letter-spacing: .13em; text-transform: uppercase; color: var(--muted); margin: 0 0 22px; }
-    .topline, .setup, .progress-label { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-    .setup { display: grid; grid-template-columns: 1fr 1fr 100px; gap: 14px; margin-top: 22px; }
-    .field { display: grid; gap: 8px; min-width: 0; }
-    label { font-size: .8rem; color: var(--muted); }
-    input, select, textarea { font: inherit; width: 100%; min-width: 0; min-height: 44px; padding: 11px; border: 1px solid var(--surface); border-radius: 8px; color: var(--text); background: var(--base); }
-    textarea { resize: vertical; }
-    input[type="checkbox"] { width: 20px; min-height: 20px; height: 20px; padding: 0; accent-color: var(--accent); }
-    select { width: auto; font-size: .8rem; }
-    input:disabled { opacity: .65; }
-    .badge { border-radius: 100px; padding: 7px 12px; font-size: .75rem; color: var(--accent); background: var(--surface); }
-    [data-state="running"] .badge { color: var(--green); }
-    [data-state="paused"] .badge { color: var(--peach); }
-    .progress-label { margin-top: 30px; margin-bottom: 12px; }
-    .progress-label { font-size: .85rem; }
-    progress { display: block; width: 100%; height: 6px; border: none; border-radius: 20px; overflow: hidden; background: var(--surface); accent-color: var(--accent); }
+    .card { min-width: 0; padding: 26px; border: 1px solid var(--line); border-radius: 22px; background: var(--panel); }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, .9fr); gap: 20px; align-items: stretch; }
+    .focus-stage { grid-column: 1; display: flex; flex-direction: column; padding: 28px; border-color: color-mix(in srgb, var(--accent) 23%, var(--line)); background: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--accent) 5%, transparent), transparent 65%), var(--panel); }
+    .stage-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+    .stage-heading h2 { margin: 0; font-size: 1.3rem; font-weight: 600; letter-spacing: -.035em; overflow-wrap: anywhere; }
+    .stage-context { margin: 6px 0 0; font-size: .8rem; color: var(--muted); }
+    .badge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 7px; min-height: 28px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 100px; background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--muted); font-size: .75rem; }
+    #status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+    [data-state="running"] #status::before, [data-state="complete"] #status::before { background: var(--good); }
+    [data-state="paused"] #status::before { background: var(--warning); }
+    summary { cursor: pointer; min-height: 44px; align-content: center; }
+    .disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; list-style: none; font-size: .8rem; color: var(--muted); }
+    .disclosure > summary::-webkit-details-marker, .session-menu > summary::-webkit-details-marker { display: none; }
+    .disclosure > summary::after { content: '+'; font-size: 1.1rem; font-weight: 400; }
+    .disclosure[open] > summary::after { content: '−'; }
+    .setup-panel { margin-top: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    .setup-panel > summary { min-height: 32px; }
+    .setup { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 86px; gap: 14px; margin: 12px 0 8px; }
+    .field { display: grid; align-content: start; gap: 8px; min-width: 0; }
+    label { font-size: .78rem; color: var(--muted); }
+    .field > label { font-size: .75rem; font-weight: 550; letter-spacing: .06em; text-transform: uppercase; }
+    input, select, textarea { width: 100%; min-width: 0; min-height: 44px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); background: var(--base); font-size: .85rem; }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+    textarea { resize: vertical; line-height: 1.6; }
+    input[type="checkbox"] { width: 18px; min-height: 18px; height: 18px; padding: 0; accent-color: var(--accent); flex-shrink: 0; }
+    input:disabled, textarea:disabled { opacity: .6; }
+    .clock-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px; padding: 28px 0 24px; text-align: center; }
+    #clock-label { font-size: .66rem; letter-spacing: .17em; text-transform: uppercase; }
+    .clock { margin: 14px 0 20px; font-size: clamp(3.1rem, 6vw, 6.4rem); font-weight: 400; letter-spacing: -.065em; line-height: 1.1; }
+    .number { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .total-time { display: inline-flex; align-items: center; gap: 12px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 100px; font-size: .75rem; color: var(--muted); }
+    .total-time .number { color: var(--text); font-size: .82rem; }
+    [data-state="ready"] .clock-area { min-height: 155px; padding: 18px 0; }
+    [data-state="ready"] .clock { font-size: clamp(3rem, 5vw, 4.6rem); }
+    .progress-label { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; font-size: .82rem; }
+    .progress-label strong { font-weight: 550; overflow-wrap: anywhere; }
+    .progress-meta { display: flex; gap: 12px; color: var(--muted); font-size: .75rem; }
+    #completion-percent { color: var(--accent); }
+    progress { display: block; width: 100%; height: 5px; border: 0; border-radius: 20px; overflow: hidden; background: var(--surface); accent-color: var(--accent); }
     progress::-webkit-progress-bar { background: var(--surface); }
     progress::-webkit-progress-value { background: var(--accent); border-radius: 20px; }
     progress::-moz-progress-bar { background: var(--accent); }
-    .clock-area { text-align: center; padding: 32px 0; }
-    .clock { font-size: clamp(2.8rem, 7vw, 4.7rem); font-weight: 400; letter-spacing: -.055em; margin: 8px 0 12px; }
-    .number { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; }
-    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    button { display: flex; justify-content: center; align-items: center; gap: 8px; font: inherit; font-size: .85rem; font-weight: 600; border: 1px solid var(--surface); border-radius: 10px; padding: 14px 10px; background: var(--base); color: var(--text); cursor: pointer; min-height: 48px; }
-    button:hover:enabled { border-color: var(--accent); }
-    button.primary { background: var(--accent); color: var(--mantle); border-color: var(--accent); }
-    button.primary:hover:enabled { filter: brightness(1.08); }
-    button.danger { color: var(--peach); }
-    button:disabled { opacity: .45; cursor: default; }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-    kbd { flex-shrink: 0; font: inherit; font-size: .75rem; border: 1px solid currentColor; border-radius: 4px; padding: 1px 5px; opacity: .8; }
-    #message { min-height: 1.6em; margin: 18px 0 0; text-align: center; font-size: .8rem; }
-    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 18px; margin: 0; }
-    .stat dt { font-size: .8rem; color: var(--muted); margin-bottom: 10px; }
-    .stat dd { margin: 0; font-size: 1.15rem; }
-    .estimate { display: grid; gap: 26px; }
-    .estimate h3 { font-size: .8rem; font-weight: 400; color: var(--muted); margin: 0 0 10px; }
-    .estimate .value { font-size: 1.4rem; margin: 0; color: var(--green); }
-    #estimate-note { margin: 16px 0 0; font-size: .85rem; }
-    .forecast-controls { margin-bottom: 20px; }
-    .forecast-controls select { width: 100%; }
-    .chart.live-chart { margin-top: 20px; }
-    #pace-trend-note, #deadline-note { margin-top: 16px; }
-    #deadline-status { font-weight: 650; margin: 18px 0; }
-    #deadline-status[data-outlook="good"], #pace-trend[data-trend="faster"] { color: var(--green); }
-    #deadline-status[data-outlook="late"], #pace-trend[data-trend="slower"] { color: var(--peach); }
-    .history { margin-top: 20px; }
-    summary { cursor: pointer; font-size: .9rem; min-height: 44px; align-content: center; }
-    .history-toolbar { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
-    .history-toolbar select { width: 100%; }
-    .history-selection { align-items: center; margin-bottom: 12px; }
-    .history-list { display: grid; gap: 14px; margin-top: 16px; }
-    .saved-session { border-top: 1px solid var(--surface); padding-top: 16px; }
-    .saved-session-heading { display: flex; align-items: center; gap: 8px; }
-    .session-select { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
-    .saved-session h3 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
-    .saved-session p { font-size: .8rem; margin: 8px 0 12px; overflow-wrap: anywhere; }
-    .history-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .history-actions button { padding: 10px 14px; min-height: 44px; }
-    .deletion-undo { position: fixed; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 20; width: min(560px, calc(100% - 28px)); display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px; border: 1px solid var(--overlay); border-radius: 12px; background: var(--surface); box-shadow: 0 6px 24px rgb(0 0 0 / .25); }
-    .deletion-undo p { flex: 1 1 200px; margin: 0; font-size: .85rem; }
-    .deletion-undo button { min-height: 44px; padding: 10px 14px; }
-    .extras { margin-top: 18px; border-top: 1px solid var(--surface); padding-top: 10px; }
+    .controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, .5fr); gap: 4px 12px; min-inline-size: 0; width: min(100%, 680px); margin: 22px auto 0; padding: 0; border: 0; }
+    .controls > button { min-height: 50px; }
+    #done { grid-column: 1; grid-row: 1; }
+    #pause { grid-column: 2; grid-row: 1; }
+    #undo, #session { min-height: 40px; border-color: transparent; background: transparent; color: var(--muted); font-size: .78rem; }
+    #undo { grid-column: 1; grid-row: 2; }
+    #session { grid-column: 2; grid-row: 2; }
+    .resume-icon, .start-icon { display: none; }
+    [data-state="paused"] #pause { grid-column: 1; background: var(--accent); color: var(--mantle); border-color: var(--accent); }
+    [data-state="paused"] #done { grid-column: 2; background: var(--surface); color: var(--muted); border-color: var(--line); }
+    [data-state="paused"] .resume-icon { display: block; }
+    [data-state="paused"] .pause-icon { display: none; }
+    :is([data-state="ready"], [data-state="stopped"], [data-state="complete"]) #done,
+    :is([data-state="ready"], [data-state="stopped"], [data-state="complete"]) #pause,
+    [data-state="ready"] #undo { display: none; }
+    :is([data-state="ready"], [data-state="stopped"], [data-state="complete"]) #session { grid-column: 1 / -1; grid-row: 1; min-height: 50px; border-color: var(--accent); background: var(--accent); color: var(--mantle); font-size: .85rem; }
+    :is([data-state="ready"], [data-state="stopped"], [data-state="complete"]) .start-icon { display: block; }
+    :is([data-state="ready"], [data-state="stopped"], [data-state="complete"]) .stop-icon { display: none; }
+    kbd { flex-shrink: 0; margin-left: 5px; border: 1px solid currentColor; border-radius: 4px; padding: 1px 4px; font: inherit; font-size: .6rem; font-weight: 400; opacity: .65; }
+    #message { min-height: 1.5em; margin: 8px 0 0; text-align: center; font-size: .75rem; }
+    .planning-panel { grid-column: 2; padding: 26px; }
+    .section-heading { margin: 0; font-size: .9rem; font-weight: 600; letter-spacing: -.015em; }
+    .estimate { display: grid; gap: 20px; margin-top: 24px; }
+    .estimate h3 { margin: 0 0 8px; font-size: .78rem; font-weight: 400; color: var(--muted); }
+    .estimate .value { margin: 0; color: var(--text); overflow-wrap: anywhere; line-height: 1.4; }
+    #eta { font-size: clamp(1.7rem, 2.5vw, 2.7rem); letter-spacing: -.05em; }
+    #finish { font-size: 1.05rem; color: var(--good); }
+    #estimate-note { margin: 12px 0 0; font-size: .76rem; color: var(--muted); }
+    .forecast-controls { margin-top: 12px; }
+    .forecast-controls > summary { font-size: .76rem; }
+    .forecast-controls .field { padding: 4px 0 10px; }
+    .deadline-block { margin-top: 18px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .deadline-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    #deadline-status { margin: 0; font-size: .75rem; font-weight: 550; text-align: right; }
+    #deadline-status[data-outlook="good"], #pace-trend[data-trend="faster"] { color: var(--good); }
+    #deadline-status[data-outlook="late"], #pace-trend[data-trend="slower"] { color: var(--warning); }
+    .deadline-controls { margin-top: 10px; }
+    .deadline-controls > summary { font-size: .8rem; color: var(--accent); }
+    .deadline-controls .extra-fields { margin: 4px 0 14px; }
+    #clear-deadline { justify-self: start; min-height: 36px; padding: 6px 10px; font-size: .75rem; background: transparent; }
+    .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; margin: 0; }
+    .stat { min-width: 0; }
+    .stat dt { margin-bottom: 8px; color: var(--muted); font-size: .75rem; }
+    .stat dd { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+    #deadline-note { margin-top: 14px; }
+    .pace-panel { grid-column: 1 / -1; }
+    .section-topline { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+    .pace-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: center; gap: 36px; }
+    .pace-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px 18px; }
+    .pace-stats dd { font-size: 1.1rem; }
+    #pace-trend { font-family: inherit; font-size: .88rem; line-height: 1.5; }
+    #pace-trend-note { margin: 18px 0 0; font-size: .75rem; }
+    .chart { min-width: 0; margin: 0; }
+    .chart figcaption { margin-bottom: 10px; font-size: .75rem; color: var(--muted); }
+    #pace-chart, #live-pace-chart { display: block; width: 100%; height: auto; color: var(--accent); border: 1px solid var(--line); border-radius: 10px; }
+    #live-pace-chart { height: 145px; padding: 10px; border: 0; border-radius: 0; background: repeating-linear-gradient(to top, transparent 0, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%); }
+    #live-chart-summary { margin-top: 9px; font-size: .72rem; }
+    .chart-empty { display: grid; justify-items: center; gap: 6px; padding: 20px; text-align: center; }
+    .chart-empty svg { width: 110px; height: 36px; color: var(--accent); opacity: .6; }
+    .chart-empty p { margin: 8px 0 0; font-size: .85rem; }
+    .chart-empty span { font-size: .75rem; color: var(--muted); }
+    .pace-panel[data-empty="true"] .pace-content { grid-template-columns: 1fr; }
+    .pace-panel[data-empty="true"] .pace-data { display: none; }
+    .extras { grid-column: 1 / -1; padding: 12px 24px; }
+    .extras > summary { color: var(--text); font-size: .8rem; }
+    .details-hint { margin-left: auto; color: var(--muted); font-size: .7rem; font-weight: 400; }
+    .notes-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 28px; padding: 14px 0 12px; }
+    .preset-tools { display: grid; align-content: start; gap: 14px; padding-left: 28px; border-left: 1px solid var(--line); }
     .extra-fields { display: grid; gap: 14px; margin-top: 12px; }
-    .extra-fields select { width: 100%; }
-    .option { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: .9rem; }
-    .small-status { font-size: .8rem; margin: 0; overflow-wrap: anywhere; }
-    .saved-note { white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-height: 3.2em; overflow: hidden; }
-    .chart { margin: 0; }
-    .chart figcaption { font-size: .85rem; margin-bottom: 8px; }
-    #pace-chart, #live-pace-chart { width: 100%; height: auto; display: block; color: var(--accent); border: 1px solid var(--surface); border-radius: 8px; }
-    .data-warning { flex-basis: 100%; margin: 0; line-height: 1.6; }
-    dialog { width: min(560px, calc(100% - 28px)); max-height: calc(100dvh - 28px); padding: 24px; border: 1px solid var(--surface); border-radius: 16px; background: var(--mantle); color: var(--text); overflow: auto; }
-    dialog::backdrop { background: rgb(0 0 0 / .6); }
-    dialog h2 { margin: 0 0 18px; font-size: 1.2rem; }
+    .history-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .history-actions button { min-height: 40px; padding: 8px 12px; font-size: .78rem; }
+    .small-status { margin: 0; color: var(--muted); font-size: .76rem; line-height: 1.6; overflow-wrap: anywhere; }
+    .quote { max-width: 70ch; margin: 0 auto 20px; padding: 8px 16px; color: var(--muted); text-align: center; font-size: .8rem; font-style: italic; line-height: 1.6; }
+    .library { border: 1px solid var(--line); border-radius: 20px; background: var(--panel); }
+    .library > summary { padding: 16px 24px; color: var(--muted); font-size: .78rem; }
+    .library[open] > summary { border-bottom: 1px solid var(--line); }
+    .library-body { padding: 0 24px 24px; }
+    .history-toolbar { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(130px, .7fr)); gap: 14px; margin: 20px 0 14px; }
+    .library-controls { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 12px; }
+    .selection-toggle { min-height: 36px; padding: 6px 12px; font-size: .75rem; background: transparent; }
+    .selection-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+    .history-selection { align-items: center; gap: 14px; margin-bottom: 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+    .history-selection .option { font-size: .75rem; }
+    #history-status:empty { display: none; }
+    #history-status { margin-bottom: 12px; }
+    .history-list { display: grid; border-top: 1px solid var(--line); }
+    .saved-session { display: grid; grid-template-columns: minmax(0, 1fr) minmax(155px, .5fr) 95px auto; align-items: center; gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+    .saved-session:last-child { border-bottom: 0; }
+    #history[data-selecting="true"] .saved-session { grid-template-columns: 44px minmax(0, 1fr) minmax(155px, .5fr) 95px; gap: 16px; }
+    .session-select { grid-column: 1; grid-row: 1; display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+    #history[data-selecting="false"] .session-select { display: none; }
+    .session-info { grid-column: 1; grid-row: 1; min-width: 0; }
+    .saved-session h3 { margin: 0; font-size: .9rem; }
+    .session-title { display: block; width: 100%; min-height: 32px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--text); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: inherit; font-weight: 600; }
+    .session-title:hover:enabled { color: var(--accent); background: transparent; }
+    .session-meta, .session-deadline { margin: 4px 0 0; color: var(--muted); font-size: .75rem; line-height: 1.7; overflow-wrap: anywhere; }
+    .session-state { display: inline-flex; align-items: center; gap: 5px; }
+    .session-state::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+    .session-state[data-status="running"]::before, .session-state[data-status="complete"]::before { background: var(--good); }
+    .session-state[data-status="paused"]::before { background: var(--warning); }
+    .saved-note { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; margin: 4px 0 0; color: var(--muted); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .session-progress { grid-column: 2; grid-row: 1; min-width: 0; }
+    .session-progress p { margin: 0 0 9px; color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; }
+    .session-progress progress { height: 4px; }
+    .session-time { grid-column: 3; grid-row: 1; display: grid; gap: 7px; }
+    .session-time-label { color: var(--muted); font-size: .75rem; }
+    .session-time .number { font-size: .9rem; }
+    .session-actions { grid-column: 4; grid-row: 1; display: flex; gap: 7px; align-items: center; justify-content: flex-end; }
+    #history[data-selecting="true"] .session-info { grid-column: 2; }
+    #history[data-selecting="true"] .session-progress { grid-column: 3; }
+    #history[data-selecting="true"] .session-time { grid-column: 4; }
+    #history[data-selecting="true"] .session-actions { grid-column: 5; }
+    #history[data-selecting="true"] .session-actions { display: none; }
+    .session-actions > button { min-height: 40px; padding: 8px 12px; font-size: .78rem; background: transparent; }
+    .session-menu { position: relative; }
+    .session-menu > summary { display: flex; align-items: center; justify-content: center; width: 40px; min-height: 40px; border: 1px solid var(--line); border-radius: 10px; list-style: none; color: var(--muted); font-size: 1.15rem; letter-spacing: .05em; }
+    .session-menu[open] > summary { background: var(--surface); border-color: var(--accent); }
+    .menu-items { position: absolute; z-index: 25; top: calc(100% + 7px); right: 0; display: grid; min-width: 180px; padding: 6px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); box-shadow: 0 12px 36px rgb(0 0 0 / .25); }
+    .session-menu[data-up="true"] .menu-items { top: auto; bottom: calc(100% + 7px); }
+    .menu-items button { justify-content: flex-start; min-height: 40px; padding: 8px 12px; border-color: transparent; background: transparent; font-size: .82rem; }
+    .menu-items button:hover { background: var(--surface); }
+    .empty-history { padding: 56px 20px; text-align: center; }
+    .empty-history h3 { margin: 0 0 8px; font-size: 1.1rem; font-weight: 550; }
+    .empty-history p { max-width: 42ch; margin: auto; color: var(--muted); font-size: .8rem; }
+    .deletion-undo { position: fixed; z-index: 35; bottom: max(20px, env(safe-area-inset-bottom)); right: max(24px, env(safe-area-inset-right)); display: flex; align-items: center; flex-wrap: wrap; gap: 12px; width: min(440px, calc(100% - 48px)); padding: 14px 16px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); box-shadow: 0 8px 32px rgb(0 0 0 / .2); }
+    .deletion-undo p { flex: 1 1 200px; margin: 0; font-size: .8rem; }
+    .deletion-undo button { min-height: 40px; padding: 8px 12px; font-size: .75rem; }
+    dialog { width: min(560px, calc(100% - 28px)); max-height: calc(100dvh - 32px); padding: 26px; border: 1px solid var(--line); border-radius: 22px; color: var(--text); background: var(--panel); overflow: auto; }
+    dialog::backdrop { background: rgb(8 9 18 / .65); backdrop-filter: blur(5px); }
+    dialog h2 { margin: 0 0 22px; font-size: 1.3rem; font-weight: 600; letter-spacing: -.035em; }
+    .dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+    .dialog-header h2 { margin: 0; }
+    .dialog-header .icon-button { background: transparent; font-size: 1.4rem; font-weight: 400; }
+    .settings-section { display: grid; gap: 14px; padding: 20px 0; border-top: 1px solid var(--line); }
+    .settings-section:last-child { padding-bottom: 0; }
+    .settings-section h3 { margin: 0 0 4px; color: var(--muted); font-size: .75rem; font-weight: 550; letter-spacing: .1em; text-transform: uppercase; }
+    .theme-picker { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .theme-picker select { width: min(190px, 60%); }
+    .theme-picker label { color: var(--text); font-size: .85rem; }
+    .option { display: flex; align-items: center; gap: 12px; min-height: 44px; color: var(--text); font-size: .83rem; }
+    .backup-actions button { flex: 1; }
+    .data-warning { margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--base); color: var(--muted); font-size: .75rem; line-height: 1.7; }
     .editor-fields { display: grid; gap: 16px; }
-    #unit-times { display: grid; gap: 10px; max-height: 240px; overflow-y: auto; padding: 4px; }
+    #unit-times { display: grid; gap: 10px; max-height: 240px; padding: 4px; overflow-y: auto; }
+    #earlier-units { justify-self: start; }
     .unit-time { display: grid; grid-template-columns: 1fr minmax(100px, 160px); align-items: center; gap: 12px; }
-    .editor-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
-    #editor-error, #rename-error { color: var(--peach); margin: 0; }
-    footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: .75rem; margin: 26px 0 12px; padding-top: 20px; border-top: 1px solid var(--surface); }
-    footer a { color: var(--muted); text-underline-offset: 3px; }
-    @media (max-width: 820px) { .workspace { grid-template-columns: 1fr; } .sidebar { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 540px) {
-      body { padding: max(18px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
-      .nav { flex-wrap: wrap; gap: 12px; padding-bottom: 18px; }
-      .nav-actions { gap: 8px; flex-wrap: wrap; }
-      .card { padding: 20px; }
-      .sidebar { grid-template-columns: 1fr; }
-      .setup { grid-template-columns: 1fr 85px; }
-      .history-toolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-      .field:first-child { grid-column: 1 / -1; }
-      .theme-picker label { display: none; }
-      .controls { gap: 8px; }
-      .clock { font-size: clamp(2.6rem, 11vw, 4rem); }
-      input, select, textarea { font-size: 16px; min-height: 44px; }
-      .estimate .value { overflow-wrap: anywhere; }
+    .editor-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+    #editor-error, #rename-error { margin: 0; color: var(--warning); font-size: .8rem; }
+    footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: .72rem; }
+    footer a { color: inherit; text-decoration: none; }
+    footer a:hover { color: var(--accent); }
+    #sparkles { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; }
+    .sparkle { position: absolute; line-height: 1; text-shadow: 0 0 12px currentColor; will-change: transform, opacity; }
+    @media (min-width: 1800px) { .app-shell { padding-right: 48px; padding-left: 48px; } .workspace { gap: 24px; grid-template-columns: minmax(0, 1.8fr) minmax(340px, 1fr); } .focus-stage { padding: 34px; } }
+    @media (max-width: 1100px) { .setup { grid-template-columns: minmax(0, 1fr) 80px; } .activity-field { grid-column: 1 / -1; } .card { padding: 22px; } .workspace { grid-template-columns: minmax(0, 1.2fr) minmax(300px, .9fr); gap: 16px; } }
+    @media (max-width: 1000px) {
+      .workspace { grid-template-columns: minmax(0, 1fr); }
+      .planning-panel { grid-column: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+      .deadline-block { margin: 0; padding: 0 0 0 24px; border-top: 0; border-left: 1px solid var(--line); }
+      .setup { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 90px; }
+      .activity-field { grid-column: auto; }
+      .saved-session { grid-template-columns: minmax(0, 1fr) auto; gap: 14px 24px; }
+      #history[data-selecting="true"] .saved-session { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px 12px; }
+      .session-info { grid-column: 1; grid-row: 1; }
+      .session-progress { grid-column: 1; grid-row: 2; }
+      .session-time { grid-column: 2; grid-row: 2; }
+      .session-actions { grid-column: 2; grid-row: 1; }
+      #history[data-selecting="true"] .session-select { grid-row: 1 / span 2; }
+      #history[data-selecting="true"] .session-info, #history[data-selecting="true"] .session-progress { grid-column: 2; }
+      #history[data-selecting="true"] .session-time, #history[data-selecting="true"] .session-actions { grid-column: 3; }
+      #history[data-selecting="true"] .session-info { grid-column: 2 / -1; }
+      .session-time { justify-items: end; gap: 4px; }
+      .session-time-label { display: none; }
     }
+    @media (max-width: 760px) {
+      .app-shell { padding-right: max(14px, env(safe-area-inset-right)); padding-left: max(14px, env(safe-area-inset-left)); }
+      .nav-inner { gap: 10px; padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: 12px; } .nav { margin-bottom: 20px; }
+      .brand { gap: 7px; font-size: 1.2rem; }
+      .brand-mark { gap: 3px; height: 21px; }
+      .brand-mark i { width: 4px; }
+      .view-switch { gap: 0; padding: 3px; border-radius: 13px; }
+      .view-switch button { min-height: 44px; padding: 8px 12px; font-size: .75rem; }
+      .tab-count { font-size: .6rem; }
+      .settings-button { width: 44px; padding: 0; }
+      .settings-label { display: none; }
+      .page-heading { gap: 14px; margin-bottom: 18px; }
+      .page-heading h2 { font-size: 1.65rem; }
+      .library-heading h2 { font-size: 1.35rem; }
+      .library-heading > button { padding: 10px 12px; font-size: .73rem; }
+      .card { padding: 20px; border-radius: 18px; }
+      .stage-heading { gap: 12px; }
+      .stage-heading h2 { font-size: 1.12rem; }
+      .stage-context { font-size: .75rem; }
+      .badge { font-size: .75rem; }
+      .setup { grid-template-columns: minmax(0, 1fr) 82px; }
+      .activity-field { grid-column: 1 / -1; }
+      input, select, textarea { font-size: 16px; }
+      .clock-area { min-height: 180px; padding: 24px 0 20px; }
+      .clock { font-size: clamp(2.9rem, 12vw, 4.25rem); }
+      [data-state="ready"] .clock { font-size: 2.8rem; }
+      .progress-label { font-size: .78rem; }
+      .progress-meta { font-size: .75rem; }
+      .planning-panel { grid-template-columns: minmax(0, 1fr); gap: 0; }
+      .estimate { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+      #eta { font-size: clamp(1.3rem, 6.1vw, 1.8rem); }
+      #finish { font-size: .82rem; }
+      .deadline-block { margin-top: 18px; padding: 18px 0 0; border-top: 1px solid var(--line); border-left: 0; }
+      .deadline-controls .extra-fields { margin-top: 6px; }
+      .pace-content { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+      .pace-stats { gap: 20px 12px; }
+      .pace-stats dd { font-size: .95rem; }
+      #pace-trend { font-size: .75rem; }
+      .section-topline { margin-bottom: 20px; }
+      .section-topline .badge { display: none; }
+      .notes-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+      .preset-tools { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+      .details-hint { display: none; }
+      .library { border-radius: 16px; }
+      .library > summary { padding: 14px 16px; }
+      .library-body { padding: 0 16px 16px; }
+      .history-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+      .history-toolbar .field:first-child { grid-column: 1 / -1; }
+      .saved-session { gap: 14px; padding: 16px 0; }
+      .session-title { min-height: 44px; font-size: .85rem; white-space: normal; overflow-wrap: anywhere; }
+      .session-actions { gap: 6px; }
+      .session-actions > button { padding: 8px 10px; min-height: 44px; font-size: .78rem; }
+      .session-menu > summary { width: 44px; min-height: 44px; }
+      .session-meta, .session-deadline, .saved-note, .session-progress p { font-size: .75rem; }
+      .session-time .number { font-size: .83rem; }
+      dialog { padding: 22px; border-radius: 18px; }
+      .quote { padding-right: 6px; padding-left: 6px; font-size: .74rem; }
+      .deletion-undo { left: 50%; right: auto; transform: translateX(-50%); width: calc(100% - 28px); }
+      footer { font-size: .68rem; }
+    }
+    @media (min-width: 761px) and (max-width: 1000px) { .clock { font-size: clamp(3.1rem, 8vw, 5.4rem); } }
+    @media (max-width: 760px), (max-height: 700px) and (pointer: coarse) {
+      [data-view="focus"] body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+      .controls { position: fixed; z-index: 20; bottom: 0; left: 0; right: 0; grid-template-columns: minmax(0, 1fr) repeat(3, 46px); gap: 8px; width: 100%; margin: 0; padding: 12px max(14px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 96%, transparent); backdrop-filter: blur(20px); }
+      .controls > button, .controls #undo, .controls #session { min-height: 50px; min-width: 0; padding: 10px; border-color: var(--line); border-radius: 12px; background: var(--base); font-size: 0; }
+      .controls > button svg { width: 20px; height: 20px; }
+      .controls #done { grid-column: 1; grid-row: 1; font-size: .82rem; background: var(--accent); color: var(--mantle); border-color: var(--accent); }
+      .controls #pause { grid-column: 2; grid-row: 1; }
+      .controls #undo { grid-column: 3; grid-row: 1; }
+      .controls #session { grid-column: 4; grid-row: 1; }
+      [data-state="paused"] .controls #pause { grid-column: 1; background: var(--accent); color: var(--mantle); border-color: var(--accent); font-size: .82rem; }
+      [data-state="paused"] .controls #done { grid-column: 2; background: var(--base); color: var(--muted); border-color: var(--line); font-size: 0; }
+      :is([data-state="ready"], [data-state="stopped"], [data-state="complete"]) .controls #session { grid-column: 1 / -1; background: var(--accent); color: var(--mantle); border-color: var(--accent); font-size: .85rem; }
+      :is([data-state="stopped"], [data-state="complete"]) .controls:has(#undo:not(:disabled)) #session { grid-column: 1 / span 3; }
+      :is([data-state="stopped"], [data-state="complete"]) .controls #undo { grid-column: 4; }
+      :is([data-state="stopped"], [data-state="complete"]) .controls #undo:disabled { display: none; }
+      .controls kbd { display: none; }
+      [data-view="focus"] .deletion-undo { bottom: calc(92px + env(safe-area-inset-bottom)); }
+    }
+    @media (max-height: 540px) and (pointer: coarse) {
+      .nav-inner { padding-top: 8px; padding-bottom: 8px; } .nav { margin-bottom: 12px; }
+      #focus-view > .page-heading { display: none; }
+      .focus-stage { padding: 16px; }
+      .stage-heading h2 { font-size: 1rem; }
+      .clock-area { min-height: 130px; padding: 14px 0; }
+      .clock { font-size: 2.8rem; margin: 10px 0 12px; }
+      .setup-panel { margin-top: 8px; }
+    }
+    @media (pointer: coarse) {
+      kbd { display: none; }
+      .view-switch button, .session-title, .disclosure > summary { min-height: 44px; }
+      .session-menu > summary { width: 44px; min-height: 44px; }
+      #clear-deadline, .selection-toggle, .menu-items button, .history-actions button { min-height: 44px; }
+    }
+    @media (prefers-reduced-motion: reduce) { #sparkles { display: none; } button { transition: none; } }
   </style>
 </head>
 <body>
-<main>
-  <nav class="nav" aria-label="App settings">
+<nav class="nav" aria-label="Pace workspace">
+  <div class="nav-inner">
     <h1 class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Pace</h1>
-    <div class="nav-actions">
-      <button type="button" id="install" hidden>Install</button>
-      <div class="theme-picker"><label for="theme">Catppuccin</label><select id="theme" aria-label="Color theme"><option value="mocha">Mocha</option><option value="macchiato">Macchiato</option><option value="frappe">Frappé</option><option value="latte">Latte</option></select></div>
+    <div class="view-switch" role="tablist" aria-label="Workspace views">
+      <button type="button" id="focus-tab" role="tab" aria-selected="true" aria-controls="focus-view">Focus</button>
+      <button type="button" id="sessions-tab" role="tab" aria-selected="false" aria-controls="sessions-view" tabindex="-1">Sessions <span id="sessions-tab-count" class="tab-count" aria-hidden="true" hidden></span></button>
     </div>
-  </nav>
+    <button type="button" id="open-settings" class="settings-button" aria-label="Settings and backup" aria-haspopup="dialog" aria-controls="options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="settings-label">Settings</span></button>
+  </div>
+</nav>
+<main class="app-shell">
   <blockquote class="quote" id="quote">“Small steps still move you forward.”</blockquote>
+  <section id="focus-view" role="tabpanel" aria-labelledby="focus-tab">
+  <header class="page-heading">
+    <h2>Focus</h2>
+  </header>
   <div class="workspace">
-  <section class="card" aria-label="Your session">
-    <div class="topline">
-      <h2 class="section-heading" style="margin:0">Session</h2>
+  <section class="card focus-stage" aria-label="Your session">
+    <div class="stage-heading">
+      <div><h2 id="session-title">New session</h2><p class="stage-context" id="session-context">Set an activity and goal.</p></div>
       <span class="badge" id="status">Ready</span>
     </div>
+    <details class="disclosure setup-panel" id="setup-panel" open>
+    <summary>Session setup <span class="details-hint">Activity, units &amp; goal</span></summary>
     <div class="setup">
-      <div class="field"><label for="activity">Activity</label><input id="activity" type="text" maxlength="80" placeholder="Optional"></div>
+      <div class="field activity-field"><label for="activity">What are you working on?</label><input id="activity" type="text" maxlength="80" placeholder="e.g. A chapter, a little practice…"></div>
       <div class="field"><label for="unit">Unit name (plural)</label><input id="unit" type="text" maxlength="32" placeholder="e.g. pages" value="units" required></div>
-      <div class="field"><label for="goal">Goal</label><input id="goal" type="number" inputmode="numeric" min="1" max="999999" step="1" value="20" required></div>
+      <div class="field"><label for="goal">Goal</label><input id="goal" type="number" inputmode="numeric" min="1" max="10000" step="1" value="20" required></div>
     </div>
-    <div class="progress-label"><strong id="progress-text">0 of 20 units finished</strong><span id="remaining">20 left</span></div>
-    <progress id="progress" value="0" max="20" aria-label="Units completed"></progress>
+    </details>
     <div class="clock-area">
       <div class="muted" id="clock-label">Time on this unit</div>
       <div class="clock number" id="current">00:00:00</div>
-      <div class="muted">Total active time <span class="number" id="total">00:00:00</span></div>
+      <div class="total-time">Total active time <span class="number" id="total">00:00:00</span></div>
     </div>
-    <div class="controls">
-      <button type="button" id="done" class="primary" disabled>Unit finished <kbd>P</kbd></button>
-      <button type="button" id="pause" disabled>Pause <kbd>T</kbd></button>
-      <button type="button" id="undo" disabled>Undo last unit <kbd>L</kbd></button>
-      <button type="button" id="session">Start session <kbd>S</kbd></button>
-    </div>
+    <div class="progress-label"><strong id="progress-text">0 of 20 units finished</strong><span class="progress-meta"><span id="remaining">20 left</span><span id="completion-percent">0%</span></span></div>
+    <progress id="progress" value="0" max="20" aria-label="Units completed"></progress>
+    <fieldset class="controls"><legend class="sr-only">Timer controls</legend>
+      <button type="button" id="done" class="primary" aria-keyshortcuts="P" disabled>Unit finished <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg><kbd>P</kbd></button>
+      <button type="button" id="pause" aria-keyshortcuts="T" disabled>Pause <svg class="pause-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg><svg class="resume-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg><kbd>T</kbd></button>
+      <button type="button" id="undo" aria-keyshortcuts="L" disabled>Undo last unit <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 10H4V5m0 5a8 8 0 1 1 1 9"/></svg><kbd>L</kbd></button>
+      <button type="button" id="session" aria-keyshortcuts="S">Start session <svg class="start-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg><svg class="stop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><kbd>S</kbd></button>
+    </fieldset>
     <p id="message" class="muted" role="status">Start session to begin.</p>
-    <details class="extras">
-      <summary>Notes &amp; presets</summary>
-      <div class="extra-fields">
-        <div class="field"><label for="notes">Session notes</label><textarea id="notes" rows="3" maxlength="4000" placeholder="Start a session to add notes." disabled></textarea></div>
-        <div class="field"><label for="preset">Saved setups</label><select id="preset"><option value="">Select a preset</option></select></div>
-        <div class="history-actions"><button type="button" id="start-preset" disabled>Start preset</button><button type="button" id="save-preset">Save setup</button><button type="button" id="remove-preset" disabled>Remove preset</button></div>
-        <p id="preset-status" class="small-status muted" role="status"></p>
-      </div>
-    </details>
   </section>
 
-  <aside class="sidebar" aria-label="Session insights">
-  <section class="card" aria-labelledby="stats-heading">
-   <h2 class="section-heading" id="stats-heading">Time per unit</h2>
-  <dl class="stats">
-    <div class="stat"><dt>Last</dt><dd class="number" id="last">—</dd></div>
-    <div class="stat"><dt>Average</dt><dd class="number" id="average">—</dd></div>
-    <div class="stat"><dt>Fastest</dt><dd class="number" id="min">—</dd></div>
-    <div class="stat"><dt>Slowest</dt><dd class="number" id="max">—</dd></div>
-    <div class="stat"><dt>Recent (last 5)</dt><dd class="number" id="recent-average">—</dd></div>
-    <div class="stat"><dt>Recent vs average</dt><dd id="pace-trend">—</dd></div>
-  </dl>
-    <p id="pace-trend-note" class="small-status muted">Recent pace uses up to 5 completed units.</p>
-    <figure class="chart live-chart"><figcaption>Unit times · first → last</figcaption><svg id="live-pace-chart" viewBox="0 0 480 160" role="img" aria-label="Session unit times, ordered from first to last" aria-describedby="live-chart-summary"></svg><p id="live-chart-summary" class="small-status muted"></p></figure>
-  </section>
-
-  <section class="card" aria-label="Finish estimate">
-    <h2 class="section-heading">Estimate</h2>
-    <div class="field forecast-controls"><label for="eta-mode">ETA basis</label><select id="eta-mode"><option value="recent">Recent pace (last 5)</option><option value="average">Whole-session average</option></select></div>
+  <aside class="card planning-panel" aria-label="Finish planning">
+  <section class="forecast-block" aria-labelledby="forecast-heading">
+    <h2 class="section-heading" id="forecast-heading">Estimate</h2>
     <div class="estimate">
       <div><h3>Estimated time left</h3><p class="value number" id="eta">—</p></div>
       <div><h3>Estimated finish time</h3><p class="value number" id="finish">—</p></div>
     </div>
     <p class="muted" id="estimate-note">Available after the first unit.</p>
+    <details class="disclosure forecast-controls"><summary>Estimate options</summary><div class="field"><label for="eta-mode">ETA basis</label><select id="eta-mode"><option value="recent">Recent pace (last 5)</option><option value="average">Whole-session average</option></select></div></details>
   </section>
-  <section class="card" aria-labelledby="deadline-heading">
-    <h2 class="section-heading" id="deadline-heading">Finish deadline</h2>
+  <section class="deadline-block" aria-labelledby="deadline-heading">
+    <div class="deadline-heading"><h2 class="section-heading" id="deadline-heading">Deadline</h2><p id="deadline-status" class="muted" role="status">No deadline</p></div>
+    <details class="disclosure deadline-controls" id="deadline-settings">
+    <summary><span id="deadline-summary">Add a deadline</span></summary>
     <div class="extra-fields">
       <div class="field"><label for="deadline">Finish by (optional, local time)</label><input id="deadline" type="datetime-local" step="60" aria-describedby="deadline-note"></div>
       <button type="button" id="clear-deadline" disabled>Clear deadline</button>
     </div>
-    <p id="deadline-status" role="status">No deadline</p>
-    <dl class="stats">
+    </details>
+    <dl class="stats" id="deadline-metrics" hidden>
       <div class="stat"><dt>Required pace</dt><dd class="number" id="required-pace">—</dd></div>
       <div class="stat"><dt id="deadline-margin-label">Estimated buffer</dt><dd class="number" id="deadline-margin">—</dd></div>
     </dl>
     <p id="deadline-note" class="small-status muted">Breaks still count toward the deadline.</p>
   </section>
   </aside>
+  <section class="card pace-panel" id="pace-panel" aria-labelledby="stats-heading" data-empty="true">
+    <div class="section-topline"><h2 class="section-heading" id="stats-heading">Pace</h2><span class="badge">Time per unit</span></div>
+    <div class="pace-content">
+      <div class="pace-data">
+        <dl class="stats pace-stats">
+          <div class="stat"><dt>Last unit</dt><dd class="number" id="last">—</dd></div>
+          <div class="stat"><dt>Session average</dt><dd class="number" id="average">—</dd></div>
+          <div class="stat"><dt>Recent · last 5</dt><dd class="number" id="recent-average">—</dd></div>
+          <div class="stat"><dt>Fastest</dt><dd class="number" id="min">—</dd></div>
+          <div class="stat"><dt>Slowest</dt><dd class="number" id="max">—</dd></div>
+          <div class="stat"><dt>Recent vs average</dt><dd id="pace-trend">—</dd></div>
+        </dl>
+        <p id="pace-trend-note" class="small-status muted">Recent pace uses up to 5 completed units.</p>
+      </div>
+      <div class="pace-visual">
+        <div id="pace-empty" class="chart-empty"><svg viewBox="0 0 120 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m4 30 20-8 18 5 23-17 20 6 30-12"/><circle cx="115" cy="4" r="3" fill="currentColor" stroke="none"/></svg><p>No pace data yet.</p><span>Complete a unit to see unit times.</span></div>
+        <figure class="chart live-chart" id="live-chart" hidden><figcaption>Unit times · first → last</figcaption><svg id="live-pace-chart" viewBox="0 0 480 160" preserveAspectRatio="none" role="img" aria-label="Session unit times, ordered from first to last" aria-describedby="live-chart-summary"></svg><p id="live-chart-summary" class="small-status muted"></p></figure>
+      </div>
+    </div>
+  </section>
+  <details class="card disclosure extras">
+    <summary>Notes &amp; saved setups</summary>
+    <div class="notes-grid">
+      <div class="field"><label for="notes">Session notes</label><textarea id="notes" rows="4" maxlength="4000" placeholder="Start a session to add notes." disabled></textarea></div>
+      <div class="preset-tools">
+        <div class="field"><label for="preset">Saved setups</label><select id="preset"><option value="">Select a preset</option></select></div>
+        <div class="history-actions"><button type="button" id="start-preset" disabled>Start preset</button><button type="button" id="save-preset">Save setup</button><button type="button" id="remove-preset" disabled>Remove preset</button></div>
+        <p id="preset-status" class="small-status muted" role="status"></p>
+      </div>
+    </div>
+  </details>
   </div>
-  <details class="card history" id="history">
-    <summary>Saved sessions <span class="muted" id="history-count">(0)</span></summary>
-    <div class="history-actions"><button type="button" id="new-session">New session</button></div>
+  </section>
+  <section id="sessions-view" role="tabpanel" aria-labelledby="sessions-tab" hidden>
+  <header class="page-heading library-heading">
+    <h2>Sessions</h2>
+    <button type="button" id="new-session" class="primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New session</button>
+  </header>
+  <details class="library disclosure" id="history" data-selecting="false" open>
+    <summary><span>All sessions <span class="muted" id="history-count">(0)</span></span></summary>
+    <div class="library-body">
     <div class="history-toolbar">
       <div class="field"><label for="history-search">Search sessions</label><input id="history-search" type="search" maxlength="80" placeholder="Search by name"></div>
       <div class="field"><label for="history-filter">Status</label><select id="history-filter"><option value="all">All statuses</option><option value="incomplete">Incomplete</option><option value="running">Running</option><option value="paused">Paused</option><option value="stopped">Stopped</option><option value="complete">Complete</option></select></div>
       <div class="field"><label for="history-sort">Sort by</label><select id="history-sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Name A–Z</option><option value="name-desc">Name Z–A</option></select></div>
     </div>
-    <div class="history-actions history-selection">
+    <div class="library-controls"><p id="history-results" class="small-status muted" role="status"></p><button type="button" id="toggle-selection" class="selection-toggle" aria-pressed="false">Select sessions</button></div>
+    <div class="history-actions history-selection" id="history-selection" hidden>
       <label class="option"><input id="select-visible" type="checkbox" disabled>Select all shown</label>
       <button type="button" id="delete-selected" class="danger" disabled>Delete selected (0)</button>
     </div>
-    <p id="history-results" class="small-status muted" role="status"></p>
     <p id="history-status" class="small-status muted" role="status"></p>
     <div class="history-list" id="history-list"></div>
+    </div>
   </details>
+  </section>
   <div id="delete-undo" class="deletion-undo" hidden>
     <p id="delete-undo-message" role="status"></p><button type="button" id="undo-delete">Undo delete</button>
   </div>
-  <details class="card history" id="options">
-    <summary>Settings &amp; backup</summary>
-    <div class="extra-fields">
+  <footer><span id="storage-status" role="status">Session saves on this device.</span><a href="https://catppuccin.com/" target="_blank" rel="noreferrer">Catppuccin ↗</a></footer>
+</main>
+<dialog id="options" aria-labelledby="settings-title">
+  <div class="dialog-header"><h2 id="settings-title">Settings &amp; backup</h2><button type="button" id="close-settings" class="icon-button" aria-label="Close settings">×</button></div>
+  <section class="settings-section" aria-labelledby="appearance-heading">
+    <h3 id="appearance-heading">Appearance</h3>
+    <div class="theme-picker"><label for="theme">Catppuccin theme</label><select id="theme" aria-label="Color theme"><option value="mocha">Mocha</option><option value="macchiato">Macchiato</option><option value="frappe">Frappé</option><option value="latte">Latte</option></select></div>
       <label class="option"><input id="show-quotes" type="checkbox" checked>Motivational quotes</label>
       <label class="option"><input id="show-sparkles" type="checkbox" checked>Completion sparkles</label>
+      <button type="button" id="install" hidden>Install Pace on this device</button>
+  </section>
+  <section class="settings-section" aria-labelledby="while-working-heading">
+    <h3 id="while-working-heading">While you work</h3>
       <label class="option"><input id="keep-awake" type="checkbox">Keep screen awake while running</label>
       <p id="wake-status" class="small-status muted" role="status"></p>
-      <div class="history-actions"><button type="button" id="export-backup">Export backup</button><button type="button" id="import-backup">Import backup</button></div>
+  </section>
+  <section class="settings-section" aria-labelledby="backup-heading">
+    <h3 id="backup-heading">Your data</h3>
+      <div class="history-actions backup-actions"><button type="button" id="export-backup">Export backup</button><button type="button" id="import-backup">Import backup</button></div>
       <input id="backup-file" type="file" accept=".json,application/json" hidden>
       <label class="option"><input id="restore-preferences" type="checkbox">Also restore backup settings and theme</label>
       <p class="small-status muted">Imports merge with existing sessions. Imported running sessions start paused.</p>
       <p id="backup-status" class="small-status muted" role="status"></p>
-    </div>
-  </details>
-  <footer class="muted"><span id="storage-status">Session saves on this device.</span><a href="https://catppuccin.com/" target="_blank" rel="noreferrer">Catppuccin palette</a>
-    <p class="data-warning">Sessions are stored only in this browser on this device. Clearing site data, private browsing, or browser storage cleanup can erase them. No cloud backup.</p>
-  </footer>
-</main>
+      <p class="data-warning">Sessions are stored only in this browser on this device. Clearing site data, private browsing, or browser storage cleanup can erase them. No cloud backup.</p>
+  </section>
+</dialog>
 <dialog id="session-editor" aria-labelledby="editor-title">
   <form id="edit-form">
     <h2 id="editor-title">Session details</h2>
     <div class="editor-fields">
       <div class="field"><label for="edit-activity">Activity</label><input id="edit-activity" maxlength="80"></div>
       <div class="field"><label for="edit-unit">Unit name (plural)</label><input id="edit-unit" maxlength="32" required></div>
-      <div class="field"><label for="edit-goal">Goal</label><input id="edit-goal" type="number" inputmode="numeric" min="1" max="999999" step="1" required></div>
+      <div class="field"><label for="edit-goal">Goal</label><input id="edit-goal" type="number" inputmode="numeric" min="1" max="10000" step="1" required></div>
       <div class="field"><label for="edit-notes">Notes</label><textarea id="edit-notes" rows="3" maxlength="4000"></textarea></div>
       <div class="field"><label for="edit-deadline">Finish by (optional, local time)</label><input id="edit-deadline" type="datetime-local" step="60"></div>
       <div class="field"><label for="edit-eta-mode">ETA basis</label><select id="edit-eta-mode"><option value="recent">Recent pace (last 5)</option><option value="average">Whole-session average</option></select></div>
       <figure class="chart"><figcaption>Time per unit · first → last</figcaption><svg id="pace-chart" viewBox="0 0 480 160" role="img" aria-label="Completed unit times, ordered from first to last" aria-describedby="chart-summary"></svg><p id="chart-summary" class="small-status muted"></p></figure>
-      <div class="field"><span class="muted">Completed unit times (seconds)</span><div id="unit-times"></div></div>
+      <div class="field"><span class="muted">Completed unit times (seconds)</span><button type="button" id="earlier-units" class="selection-toggle" hidden></button><div id="unit-times"></div></div>
       <div class="history-actions"><button type="button" id="add-unit">Add unit</button><button type="button" id="remove-unit">Remove last unit</button></div>
       <div class="field"><label for="edit-current">Unfinished unit time (seconds)</label><input id="edit-current" type="number" inputmode="decimal" min="0" step="0.001" required></div>
       <p id="editor-error" role="alert"></p>
@@ -310,12 +569,16 @@
   let deletionUndo = null;
   const DELETE_UNDO_MS = 10000;
   let editingId = null;
+  let editTimes = [];
+  let editWindow = 0;
   let renamingId = null;
   let sessionNotes = '';
   let deadline = null;
   let completedAt = null;
   let etaMode = 'recent';
   let liveChartSignature = '';
+  let currentView = 'focus';
+  let selectingSessions = false;
   let settings = { quotes: true, sparkles: true, awake: false };
   let presets = [];
 
@@ -332,6 +595,19 @@
     if (el(id).textContent !== value) el(id).textContent = value;
   }
   function message(value) { text('message', value); }
+  function showView(view) {
+    currentView = view;
+    document.documentElement.dataset.view = view;
+    for (const name of ['focus', 'sessions']) {
+      const selected = name === view;
+      el(`${name}-view`).hidden = !selected;
+      el(`${name}-tab`).setAttribute('aria-selected', String(selected));
+      el(`${name}-tab`).tabIndex = selected ? 0 : -1;
+    }
+    for (const menu of el('history-list').querySelectorAll('details')) menu.open = false;
+    if (view === 'sessions') { el('history').open = true; renderHistory(true); }
+    window.scrollTo?.(0, 0);
+  }
   const quotes = [
     'Small steps still move you forward.',
     'You only need to take the next step.',
@@ -432,7 +708,7 @@
   }
   const inputDeadline = id => el(id).value ? new Date(el(id).value).getTime() : null;
   function validSetup(config) {
-    return config && Number.isInteger(config.goal) && config.goal >= 1 && config.goal <= 999999 &&
+    return config && Number.isInteger(config.goal) && config.goal >= 1 && config.goal <= 10000 &&
       typeof config.unit === 'string' && config.unit.trim() && config.unit.length <= 32 &&
       typeof config.activity === 'string' && config.activity.length <= 80;
   }
@@ -482,11 +758,13 @@
     select.value = presets.some(preset => preset.id === selected) ? selected : '';
     el('start-preset').disabled = el('remove-preset').disabled = !select.value;
   }
+  const PRESET_CAP = 500;
   function savePreset(config) {
     if (!validSetup(config)) return 'Enter a valid activity, unit name, and goal.';
     const current = latestPresets();
     const setup = { activity: config.activity.trim(), unit: config.unit.trim(), goal: config.goal };
     const existing = current.find(preset => preset.activity === setup.activity && preset.unit === setup.unit && preset.goal === setup.goal);
+    if (!existing && current.length >= PRESET_CAP) return 'Preset limit reached. Remove a setup before adding another.';
     const preset = existing || { id: newId(), name: setup.activity || `${setup.goal} ${setup.unit}`, ...setup };
     const next = existing ? current : [...current, preset];
     try { localStorage.setItem('pace-presets', JSON.stringify({ version: 1, presets: next })); }
@@ -572,7 +850,8 @@
     }
   }
   function renderPaceChart() {
-    drawPaceChart('pace-chart', 'chart-summary', Array.from(el('unit-times').querySelectorAll('input'), input => Number(input.value) * 1000));
+    syncUnitTimes();
+    drawPaceChart('pace-chart', 'chart-summary', editTimes.slice());
   }
   function paceMetrics(points, total, target, mode = 'recent') {
     const times = points.slice(1).map((value, i) => value - points[i]);
@@ -611,6 +890,8 @@
     text('deadline-status', outlook.status);
     el('deadline-status').dataset.outlook = outlook.tone;
     el('clear-deadline').disabled = deadline === null && !el('deadline').value;
+    el('deadline-metrics').hidden = deadline === null;
+    text('deadline-summary', deadline === null ? 'Add a finish deadline' : new Date(deadline).toLocaleString(undefined, {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}));
     text('required-pace', outlook.required === null ? '—' : outlook.required < 1000 ? '<1 sec / unit' : `${duration(outlook.required)} / unit`);
     text('deadline-margin-label', state === 'complete' ? 'Finish margin' : 'Estimated buffer');
     const bound = metrics.overrun && state !== 'complete' ? (outlook.margin >= 0 ? '≤ ' : '≥ ') : '';
@@ -636,13 +917,17 @@
       saved.checkpoints.every((value, i, values) => Number.isFinite(value) && value >= 0 &&
         value <= saved.elapsed && (i === 0 || value >= values[i - 1]));
   }
+  // Re-parse only when the stored string changes; render() re-reads history every second.
+  let historyRead = { raw: null, data: [] };
   function readHistory() {
     const raw = localStorage.getItem('pace-sessions');
     if (!raw) return [];
+    if (raw === historyRead.raw) return historyRead.data;
     const data = JSON.parse(raw);
     if (data.version !== 1 || !Array.isArray(data.sessions)) throw new Error('Invalid session history');
-    return data.sessions.filter(saved => validSession(saved) && typeof saved.id === 'string' &&
-      saved.id && Number.isFinite(saved.createdAt) && saved.createdAt >= 0);
+    historyRead = { raw, data: data.sessions.filter(saved => validSession(saved) && typeof saved.id === 'string' &&
+      saved.id && Number.isFinite(saved.createdAt) && saved.createdAt >= 0) };
+    return historyRead.data;
   }
   function remember(saved) {
     sessions = [saved, ...sessions.filter(item => item.id !== saved.id)];
@@ -654,7 +939,9 @@
   }
   function writeHistory(saved) {
     const next = [saved, ...latestHistory().filter(item => item.id !== saved.id)];
-    localStorage.setItem('pace-sessions', JSON.stringify({ version: 1, sessions: next }));
+    const raw = JSON.stringify({ version: 1, sessions: next });
+    localStorage.setItem('pace-sessions', raw);
+    historyRead = { raw, data: next };
     sessions = next;
   }
   function createBackup() {
@@ -665,12 +952,15 @@
     return JSON.parse(JSON.stringify({ app: 'pace', version: 1, exportedAt: Date.now(),
       sessions, presets, settings, theme: document.documentElement.dataset.theme }));
   }
+  const MAX_BACKUP_BYTES = 33554432;
   function parseBackup(input) {
+    if (typeof input === 'string' && input.length > MAX_BACKUP_BYTES) throw new Error('That backup is too large to import (32 MB maximum).');
     const data = typeof input === 'string' ? JSON.parse(input.trim()) : input;
     if (!data || data.version !== 1 || data.app !== undefined && data.app !== 'pace') throw new Error('Unsupported backup format.');
     if (data.sessions !== undefined && !Array.isArray(data.sessions)) throw new Error('Backup has no valid session list.');
     const records = Array.isArray(data.sessions) ? data.sessions : validSession(data) ? [data] : null;
     if (!records) throw new Error('Backup has no valid session list.');
+    if (records.length > 10000) throw new Error('Backup has no valid session list.');
     const imported = records.map((saved, index) => {
       if (!validSession(saved) || saved.notes !== undefined && (typeof saved.notes !== 'string' || saved.notes.length > 4000)) throw new Error('Backup contains an invalid session.');
       const id = saved.id === undefined ? `legacy-${saved.savedAt}-${index}` : saved.id;
@@ -680,7 +970,7 @@
     });
     if (new Set(imported.map(saved => saved.id)).size !== imported.length) throw new Error('Backup contains duplicate session IDs.');
     const setups = data.presets === undefined ? [] : data.presets;
-    if (!Array.isArray(setups) || !setups.every(validPreset)) throw new Error('Backup contains an invalid preset.');
+    if (!Array.isArray(setups) || setups.length > PRESET_CAP || !setups.every(validPreset)) throw new Error('Backup contains an invalid preset.');
     if (new Set(setups.map(preset => preset.id)).size !== setups.length) throw new Error('Backup contains duplicate preset IDs.');
     if (data.settings !== undefined && !validSettings(data.settings)) throw new Error('Backup contains invalid settings.');
     if (data.theme !== undefined && !themes.includes(data.theme)) throw new Error('Backup contains an invalid theme.');
@@ -726,22 +1016,25 @@
     const backup = parseBackup(input);
     saveSession();
     const merged = mergeRecords(latestHistory(), backup.sessions, sessionContents);
-    const setups = mergeRecords(latestPresets(), backup.presets, preset => JSON.stringify([preset.name, preset.activity, preset.unit, preset.goal]), 256);
+    const existingSetups = latestPresets();
+    const setups = mergeRecords(existingSetups, backup.presets, preset => JSON.stringify([preset.name, preset.activity, preset.unit, preset.goal]), 256);
+    const storedSetups = setups.records.slice(Math.max(0, setups.records.length - PRESET_CAP));
+    const presetAdds = Math.max(0, Math.min(setups.count, PRESET_CAP - existingSetups.length));
     const entries = [
       ['pace-sessions', JSON.stringify({ version: 1, sessions: merged.records })],
-      ['pace-presets', JSON.stringify({ version: 1, presets: setups.records })],
+      ['pace-presets', JSON.stringify({ version: 1, presets: storedSetups })],
     ];
     if (restorePreferences && backup.settings) entries.push(['pace-settings', JSON.stringify({ version: 1, settings: backup.settings })]);
     if (restorePreferences && backup.theme) entries.push(['pace-theme', backup.theme]);
     try { storeTogether(entries); }
     catch { throw new Error('Import could not be saved. Browser storage is unavailable or full.'); }
     sessions = merged.records;
-    presets = setups.records;
+    presets = storedSetups;
     if (restorePreferences && backup.settings) { settings = { ...backup.settings }; applySettings(); }
     if (restorePreferences && backup.theme) applyTheme(backup.theme);
     renderPresets();
     renderHistory(true);
-    return { sessions: merged.count, presets: setups.count };
+    return { sessions: merged.count, presets: presetAdds };
   }
   function sessionSnapshot() {
     return {
@@ -751,7 +1044,11 @@
       elapsed: elapsed(), savedAt: Date.now(),
     };
   }
-  function saveSession() {
+  const HISTORY_TICK_EVERY = 5;
+  let historyTicks = 0;
+  let historyKey = null;
+  let historyStored = false;
+  function saveSession(mode = 'flush') {
     const latest = latestHistory();
     if (state === 'ready') { sessions = latest; return; }
     const stored = latest.find(item => item.id === sessionId);
@@ -779,14 +1076,23 @@
     }
     if (!sessionId) { sessionId = newId(); createdAt = Date.now(); }
     const saved = sessionSnapshot();
-    let historySaved = false;
-    try {
-      writeHistory(saved);
-      historySaved = true;
-      persistedSessionId = sessionId;
-      persistedSessionState = state;
-      persistedPlanning = { deadline, etaMode };
-    } catch { remember(saved); /* History failure must not block active-session saving. */ }
+    const key = JSON.stringify([sessionId, state, saved.activity, saved.unit, saved.goal, saved.notes,
+      saved.deadline, saved.etaMode, saved.checkpoints.length, saved.checkpoints[saved.checkpoints.length - 1], saved.createdAt]);
+    // Pure clock ticks reach storage only when something changed or the batch interval is due.
+    const due = mode !== 'none' && (mode === 'flush' || key !== historyKey || (mode === 'tick' && ++historyTicks >= HISTORY_TICK_EVERY));
+    if (due) {
+      historyTicks = 0;
+      historyKey = key;
+      historyStored = false;
+      try {
+        writeHistory(saved);
+        historyStored = true;
+        persistedSessionId = sessionId;
+        persistedSessionState = state;
+        persistedPlanning = { deadline, etaMode };
+      } catch { remember(saved); /* History failure must not block active-session saving. */ }
+    } else remember(saved);
+    const historySaved = historyStored;
     try {
       // Retain the v1 active-session format so existing installations keep working.
       if (state !== 'complete') localStorage.setItem('pace-session', JSON.stringify(saved));
@@ -815,6 +1121,7 @@
     el('notes').value = sessionNotes;
     el('deadline').value = localDateTime(deadline);
     el('eta-mode').value = etaMode;
+    el('setup-panel').open = false;
   }
   function restoreSession() {
     try { sessions = readHistory(); } catch { /* Existing active sessions can still be restored. */ }
@@ -842,6 +1149,7 @@
     if (!saved || saved.state === 'complete') return;
     loadSession(saved);
     state = 'running';
+    showView('focus');
     message('Session resumed.');
     render();
   }
@@ -867,6 +1175,8 @@
     el('notes').value = sessionNotes;
     el('deadline').value = localDateTime(deadline);
     el('eta-mode').value = etaMode;
+    el('setup-panel').open = false;
+    showView('focus');
     message(activityName || 'Session started.');
     render();
   }
@@ -893,6 +1203,7 @@
     el('notes').value = '';
     el('deadline').value = '';
     el('eta-mode').value = etaMode;
+    el('setup-panel').open = true;
   }
   function renameSession(id) {
     const saved = latestHistory().find(item => item.id === id);
@@ -950,13 +1261,13 @@
     const count = deletionUndo.records.length;
     const status = `${count} session${count === 1 ? '' : 's'} deleted.`;
     text('history-status', status);
-    message(status);
+    if (state === 'ready') message('Start session to begin.');
     render();
     el('new-session').focus();
   }
   function renderDeleteUndo() {
     if (deletionUndo && Date.now() >= deletionUndo.expiresAt) deletionUndo = null;
-    if (!deletionUndo && document.activeElement === el('undo-delete')) el(el('history').open ? 'new-session' : 'session').focus();
+    if (!deletionUndo && document.activeElement === el('undo-delete')) el(currentView === 'sessions' ? 'new-session' : 'session').focus();
     el('delete-undo').hidden = !deletionUndo;
     if (deletionUndo) {
       const count = deletionUndo.records.length;
@@ -999,8 +1310,10 @@
     return element;
   }
   function focusHistoryAction(id, action) {
+    if (currentView !== 'sessions') { el('focus-tab').focus(); return; }
     const button = Array.from(el('history-list').querySelectorAll('button')).find(button => button.dataset.id === id && button.dataset.action === action);
-    (button || el('history-search')).focus();
+    const menu = button?.closest('.session-menu');
+    (menu?.querySelector('summary') || button || el('history-search')).focus();
   }
   function visibleSessions() {
     const search = el('history-search').value.trim().toLocaleLowerCase();
@@ -1015,7 +1328,8 @@
         return (sort === 'oldest' ? byDate : sort === 'name' ? byName : sort === 'name-desc' ? -byName : -byDate) || a.id.localeCompare(b.id);
       });
   }
-  function renderHistorySelection(visible = visibleSessions()) {
+  const HISTORY_RENDER_CAP = 300;
+  function renderHistorySelection(visible = visibleSessions().slice(0, HISTORY_RENDER_CAP)) {
     const shown = new Set(visible.map(saved => saved.id));
     for (const id of selectedSessionIds) if (!shown.has(id)) selectedSessionIds.delete(id);
     for (const checkbox of el('history-list').querySelectorAll('input')) checkbox.checked = selectedSessionIds.has(checkbox.dataset.id);
@@ -1023,17 +1337,32 @@
     el('select-visible').checked = visible.length > 0 && selectedSessionIds.size === visible.length;
     el('select-visible').indeterminate = selectedSessionIds.size > 0 && selectedSessionIds.size < visible.length;
     el('delete-selected').disabled = !selectedSessionIds.size;
+    el('history').dataset.selecting = String(selectingSessions);
+    el('history-selection').hidden = !selectingSessions;
+    el('toggle-selection').setAttribute('aria-pressed', String(selectingSessions));
+    el('toggle-selection').disabled = !visible.length && !selectingSessions;
+    text('toggle-selection', selectingSessions ? 'Done selecting' : 'Select sessions');
     text('delete-selected', `Delete selected (${selectedSessionIds.size})`);
+  }
+  function historyAction(id, action, label, className = '') {
+    const button = makeElement('button', className, label);
+    button.type = 'button';
+    button.dataset.action = action;
+    button.dataset.id = id;
+    return button;
   }
   function renderHistory(force = false) {
     text('history-count', `(${sessions.length})`);
+    text('sessions-tab-count', sessions.length > 99 ? '99+' : String(sessions.length));
+    el('sessions-tab-count').hidden = !sessions.length;
     if (!el('history').open) return;
     const visible = visibleSessions();
-    text('history-results', `Showing ${visible.length} of ${sessions.length} sessions`);
-    renderHistorySelection(visible);
+    const shown = visible.slice(0, HISTORY_RENDER_CAP);
+    text('history-results', `Showing ${visible.length} of ${sessions.length} sessions${visible.length > shown.length ? ` · first ${shown.length} shown` : ''}`);
+    renderHistorySelection(shown);
     // Don't rebuild focused controls when the live clock ticks.
-    const signature = JSON.stringify([sessionId, visible.map(saved =>
-      [saved.id, saved.createdAt, saved.state, saved.goal, saved.unit, saved.activity, saved.notes, saved.deadline, saved.etaMode, saved.checkpoints, saved.id === sessionId ? null : saved.elapsed])]);
+    const signature = JSON.stringify([sessionId, shown.map(saved =>
+      [saved.id, saved.createdAt, saved.state, saved.goal, saved.unit, saved.activity, saved.notes, saved.deadline, saved.etaMode, saved.checkpoints.length, saved.id === sessionId ? null : saved.elapsed])]);
     if (!force && signature === historySignature) {
       if (el('history-current-time')) text('history-current-time', duration(elapsed()));
       return;
@@ -1041,11 +1370,16 @@
     historySignature = signature;
     const list = el('history-list');
     list.replaceChildren();
-    if (!visible.length) { list.append(makeElement('p', 'muted', sessions.length ? 'No sessions match your search or filter.' : 'No saved sessions.')); return; }
-    for (const saved of visible) {
+    if (!shown.length) {
+      const empty = makeElement('div', 'empty-history');
+      empty.append(makeElement('h3', '', sessions.length ? 'No sessions match your search or filter.' : 'No saved sessions yet.'),
+        makeElement('p', '', sessions.length ? 'Try a different name or status.' : 'Your next session starts with the button above.'));
+      list.append(empty);
+      return;
+    }
+    for (const saved of shown) {
       const row = makeElement('article', 'saved-session');
       row.dataset.id = saved.id;
-      const heading = makeElement('div', 'saved-session-heading');
       const selection = makeElement('label', 'session-select');
       const checkbox = makeElement('input');
       checkbox.type = 'checkbox';
@@ -1053,48 +1387,89 @@
       checkbox.checked = selectedSessionIds.has(saved.id);
       checkbox.setAttribute('aria-label', `Select ${saved.activity || 'Untitled session'}`);
       selection.append(checkbox);
-      heading.append(selection, makeElement('h3', '', saved.activity || 'Untitled session'));
-      row.append(heading);
+      row.append(selection);
+      const info = makeElement('div', 'session-info');
+      const heading = makeElement('h3');
+      heading.append(historyAction(saved.id, 'edit', saved.activity || 'Untitled session', 'session-title'));
+      info.append(heading);
       const status = { running: 'Running', paused: 'Paused', stopped: 'Stopped', complete: 'Complete' }[saved.state];
-      const meta = makeElement('p', 'muted');
+      const meta = makeElement('p', 'session-meta');
+      const statusLabel = makeElement('span', 'session-state', `${status}${saved.id === sessionId ? ' · Current' : ''}`);
+      statusLabel.dataset.status = saved.state;
+      meta.append(makeElement('span', '', `${new Date(saved.createdAt).toLocaleString(undefined, {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'})} · `), statusLabel);
+      info.append(meta);
+      if (deadlineOf(saved) !== null) info.append(makeElement('p', 'session-deadline', `Finish by ${new Date(saved.deadline).toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'})}`));
+      if (notesOf(saved)) info.append(makeElement('p', 'saved-note', notesOf(saved)));
+      row.append(info);
+      const progress = makeElement('div', 'session-progress');
+      const meter = makeElement('progress');
+      meter.value = saved.checkpoints.length - 1;
+      meter.max = saved.goal;
+      meter.setAttribute('aria-label', `${saved.activity || 'Untitled session'} progress`);
+      progress.append(makeElement('p', '', `${saved.checkpoints.length - 1} / ${saved.goal} ${saved.unit}`), meter);
+      row.append(progress);
+      const timing = makeElement('div', 'session-time');
       const time = makeElement('span', 'number', duration(saved.elapsed));
       if (saved.id === sessionId) time.id = 'history-current-time';
-      meta.append(
-        makeElement('span', '', `${new Date(saved.createdAt).toLocaleString()} · ${saved.checkpoints.length - 1}/${saved.goal} ${saved.unit} · `),
-        time,
-        makeElement('span', '', ` · ${status}${saved.id === sessionId ? ' · Current' : ''}`),
-      );
-      if (deadlineOf(saved) !== null) meta.append(makeElement('span', '', ` · Deadline ${new Date(saved.deadline).toLocaleString()}`));
-      row.append(meta);
-      if (notesOf(saved)) row.append(makeElement('p', 'saved-note muted', notesOf(saved)));
-      const actions = makeElement('div', 'history-actions');
-      for (const [action, label] of [['edit', 'Review / edit'], ['rename', 'Rename'], ['resume', 'Resume'], ['restart', 'Restart'], ['delete', 'Delete']]) {
-        const button = makeElement('button', action === 'delete' ? 'danger' : '', label);
-        button.type = 'button';
-        button.dataset.action = action;
-        button.dataset.id = saved.id;
-        button.disabled = action === 'resume' && (saved.state === 'complete' || saved.id === sessionId && state === 'running');
-        actions.append(button);
+      timing.append(makeElement('span', 'session-time-label', 'Active time'), time);
+      row.append(timing);
+      const actions = makeElement('div', 'session-actions');
+      const isRunning = saved.id === sessionId && state === 'running';
+      const resume = historyAction(saved.id, isRunning ? 'focus' : 'resume', isRunning ? 'Open' : 'Resume');
+      resume.disabled = resume.hidden = saved.state === 'complete';
+      actions.append(resume);
+      const menu = makeElement('details', 'session-menu');
+      const summary = makeElement('summary', '', '···');
+      summary.setAttribute('aria-label', `More actions for ${saved.activity || 'Untitled session'}`);
+      const items = makeElement('div', 'menu-items');
+      for (const [action, label] of [['rename', 'Rename'], ['restart', 'Restart'], ['delete', 'Delete']]) {
+        items.append(historyAction(saved.id, action, label, action === 'delete' ? 'danger' : ''));
       }
+      menu.append(summary, items);
+      menu.addEventListener('toggle', () => {
+        if (!menu.open) return;
+        const anchor = summary.getBoundingClientRect();
+        const height = items.getBoundingClientRect().height;
+        menu.dataset.up = String(anchor.bottom + height + 8 > window.innerHeight && anchor.top > height + 8);
+      });
+      actions.append(menu);
       row.append(actions);
       list.append(row);
     }
   }
-  function addUnitTime(milliseconds = 0) {
-    const index = el('unit-times').children.length + 1;
-    const row = makeElement('div', 'unit-time');
-    const label = makeElement('label', '', `Unit ${index}`);
-    label.htmlFor = `unit-time-${index}`;
-    const input = makeElement('input');
-    input.id = label.htmlFor;
-    input.type = 'number';
-    input.inputMode = 'decimal';
-    input.min = '0';
-    input.step = '0.001';
-    input.required = true;
-    input.value = Number((milliseconds / 1000).toFixed(3));
-    row.append(label, input);
-    el('unit-times').append(row);
+  // The editor renders only a trailing window of rows so absurdly large sessions stay editable.
+  const UNIT_WINDOW = 100;
+  function syncUnitTimes() {
+    const rows = el('unit-times').children;
+    const start = editTimes.length - rows.length;
+    [...rows].forEach((row, i) => { editTimes[start + i] = Number(row.querySelector('input').value) * 1000; });
+  }
+  function updateAddUnit() {
+    el('add-unit').disabled = editTimes.length >= Number(el('edit-goal').value);
+  }
+  function renderUnitWindow() {
+    const list = el('unit-times');
+    const start = Math.max(0, editTimes.length - editWindow);
+    list.replaceChildren();
+    for (let i = start; i < editTimes.length; i++) {
+      const row = makeElement('div', 'unit-time');
+      const label = makeElement('label', '', `Unit ${i + 1}`);
+      label.htmlFor = `unit-time-${i + 1}`;
+      const input = makeElement('input');
+      input.id = label.htmlFor;
+      input.type = 'number';
+      input.inputMode = 'decimal';
+      input.min = '0';
+      input.step = '0.001';
+      input.required = true;
+      input.value = Number((editTimes[i] / 1000).toFixed(3));
+      row.append(label, input);
+      list.append(row);
+    }
+    const earlier = el('earlier-units');
+    earlier.hidden = start === 0;
+    earlier.textContent = `Show ${Math.min(UNIT_WINDOW, start)} earlier unit${start === 1 ? '' : 's'}`;
+    updateAddUnit();
   }
   function editSession(id) {
     if (id === sessionId) { suspendSession(); render(); }
@@ -1111,7 +1486,9 @@
     const last = saved.checkpoints[saved.checkpoints.length - 1];
     el('edit-current').value = Number(((saved.elapsed - last) / 1000).toFixed(3));
     el('unit-times').replaceChildren();
-    saved.checkpoints.slice(1).forEach((value, i) => { addUnitTime(value - saved.checkpoints[i]); });
+    editTimes = saved.checkpoints.slice(1).map((value, i) => value - saved.checkpoints[i]);
+    editWindow = Math.min(editTimes.length, UNIT_WINDOW);
+    renderUnitWindow();
     renderPaceChart();
     text('editor-error', '');
     el('session-editor').showModal();
@@ -1147,7 +1524,7 @@
   }
 
   function render() {
-    saveSession();
+    saveSession('tick');
     renderDeleteUndo();
     renderHistory();
     syncWakeLock();
@@ -1157,8 +1534,11 @@
     const active = state === 'running' || state === 'paused';
     document.documentElement.dataset.state = state;
     text('status', {ready: 'Ready', running: 'Running', paused: 'Paused', stopped: 'Stopped', complete: 'Complete'}[state]);
+    text('session-title', activityName || (state === 'ready' ? 'New session' : 'Focus session'));
+    text('session-context', state === 'ready' ? 'Set an activity and goal.' : `Your goal · ${goal} ${unit}`);
     text('progress-text', `${done} of ${goal} ${unit} finished`);
     text('remaining', `${left} left`);
+    text('completion-percent', `${Math.round(done / goal * 100)}%`);
     el('progress').max = goal;
     el('progress').value = done;
     text('current', duration(left ? now - checkpoints[done] : 0));
@@ -1178,6 +1558,9 @@
     buttonLabel('session', active ? 'Stop session ' : state === 'ready' ? 'Start session ' : 'Start fresh ');
 
     const metrics = paceMetrics(checkpoints, now, goal, etaMode);
+    el('pace-panel').dataset.empty = String(!done);
+    el('pace-empty').hidden = done > 0;
+    el('live-chart').hidden = !done;
     const clock = Date.now();
     renderDeadline(metrics, clock);
     const chartSignature = JSON.stringify(metrics.times);
@@ -1271,7 +1654,24 @@
     message(`Last unit undone.${state === 'paused' ? ' Paused — press Resume to continue.' : ''}`);
     render();
   });
+  for (const [index, view] of ['focus', 'sessions'].entries()) {
+    el(`${view}-tab`).addEventListener('click', () => showView(view));
+    el(`${view}-tab`).addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 'focus' : event.key === 'End' ? 'sessions' : ['focus', 'sessions'][1 - index];
+      showView(next);
+      el(`${next}-tab`).focus();
+    });
+  }
+  el('open-settings').addEventListener('click', () => el('options').showModal());
+  el('close-settings').addEventListener('click', () => el('options').close());
   el('history').addEventListener('toggle', () => renderHistory(true));
+  el('toggle-selection').addEventListener('click', () => {
+    selectingSessions = !selectingSessions;
+    if (!selectingSessions) selectedSessionIds.clear();
+    renderHistorySelection();
+  });
   for (const [id, event] of [['history-search', 'input'], ['history-filter', 'change'], ['history-sort', 'change']]) {
     el(id).addEventListener(event, () => {
       if (id !== 'history-sort') selectedSessionIds.clear();
@@ -1279,7 +1679,7 @@
     });
   }
   el('select-visible').addEventListener('change', () => {
-    for (const saved of visibleSessions()) {
+    for (const saved of visibleSessions().slice(0, HISTORY_RENDER_CAP)) {
       if (el('select-visible').checked) selectedSessionIds.add(saved.id); else selectedSessionIds.delete(saved.id);
     }
     renderHistorySelection();
@@ -1300,19 +1700,36 @@
   el('history-list').addEventListener('click', event => {
     const button = event.target.closest('button[data-action]');
     if (!button || button.disabled) return;
-    const actions = { edit: editSession, rename: renameSession, resume: resumeSession, restart: restartSession, delete: id => deleteSessions([id]) };
+    const menu = button.closest('.session-menu');
+    if (menu) menu.open = false;
+    const actions = { edit: editSession, rename: renameSession, resume: resumeSession, restart: restartSession, delete: id => deleteSessions([id]), focus: () => showView('focus') };
     actions[button.dataset.action]?.(button.dataset.id);
+  });
+  el('history-list').addEventListener('keydown', event => {
+    const menu = event.target.closest('.session-menu');
+    if (event.key === 'Escape' && menu?.open) {
+      menu.open = false;
+      menu.querySelector('summary').focus();
+      event.preventDefault();
+    }
+  });
+  document.addEventListener('click', event => {
+    for (const menu of el('history-list').querySelectorAll('details')) {
+      if (menu.open && !menu.contains(event.target)) menu.open = false;
+    }
   });
   el('new-session').addEventListener('click', () => {
     suspendSession();
     resetSession();
     try { localStorage.removeItem('pace-session'); } catch { /* History remains available in memory. */ }
+    showView('focus');
     message('Start session to begin.');
     render();
+    el('activity').focus();
   });
   el('notes').addEventListener('input', () => {
     sessionNotes = el('notes').value;
-    saveSession();
+    saveSession('none');
     renderHistory();
   });
   el('deadline').addEventListener('change', () => {
@@ -1385,14 +1802,34 @@
     const file = el('backup-file').files[0];
     if (!file) return;
     try {
-      if (file.size > 10 * 1024 * 1024) throw new Error('Backup must be smaller than 10 MB.');
+      if (file.size > MAX_BACKUP_BYTES) throw new Error('Backup files must be smaller than 32 MB.');
       const added = importBackup(await file.text(), el('restore-preferences').checked);
       text('backup-status', `Imported ${added.sessions} session${added.sessions === 1 ? '' : 's'} and ${added.presets} preset${added.presets === 1 ? '' : 's'}. Existing data kept.`);
     } catch (error) { text('backup-status', error instanceof SyntaxError ? 'Invalid JSON backup.' : error.message); }
     finally { el('backup-file').value = ''; }
   });
-  el('add-unit').addEventListener('click', () => { addUnitTime(); renderPaceChart(); });
-  el('remove-unit').addEventListener('click', () => { el('unit-times').lastElementChild?.remove(); renderPaceChart(); });
+  el('earlier-units').addEventListener('click', () => {
+    syncUnitTimes();
+    editWindow = Math.min(editTimes.length, editWindow + UNIT_WINDOW);
+    renderUnitWindow();
+    renderPaceChart();
+  });
+  el('edit-goal').addEventListener('input', updateAddUnit);
+  el('add-unit').addEventListener('click', () => {
+    syncUnitTimes();
+    if (editTimes.length >= Number(el('edit-goal').value)) return;
+    editTimes.push(0);
+    if (editWindow < UNIT_WINDOW) editWindow = editTimes.length;
+    renderUnitWindow();
+    renderPaceChart();
+  });
+  el('remove-unit').addEventListener('click', () => {
+    syncUnitTimes();
+    editTimes.pop();
+    editWindow = Math.min(editWindow, editTimes.length);
+    renderUnitWindow();
+    renderPaceChart();
+  });
   el('unit-times').addEventListener('input', renderPaceChart);
   el('cancel-edit').addEventListener('click', () => el('session-editor').close());
   el('cancel-rename').addEventListener('click', () => el('session-renamer').close());
@@ -1409,6 +1846,7 @@
   el('edit-form').addEventListener('submit', event => {
     event.preventDefault();
     if (!el('edit-form').reportValidity()) return;
+    syncUnitTimes();
     const error = updateSavedSession(editingId, {
       activity: el('edit-activity').value,
       unit: el('edit-unit').value,
@@ -1417,7 +1855,7 @@
       deadline: inputDeadline('edit-deadline'),
       etaMode: el('edit-eta-mode').value,
       current: Number(el('edit-current').value) * 1000,
-      times: Array.from(el('unit-times').querySelectorAll('input'), input => Number(input.value) * 1000),
+      times: editTimes.slice(),
     });
     if (error) { text('editor-error', error); return; }
     el('session-editor').close();
@@ -1426,7 +1864,7 @@
     focusHistoryAction(editingId, 'edit');
   });
   document.addEventListener('keydown', event => {
-    if (el('session-editor').open || el('session-renamer').open || event.repeat || event.ctrlKey || event.altKey || event.metaKey ||
+    if (el('session-editor').open || el('session-renamer').open || el('options').open || event.repeat || event.ctrlKey || event.altKey || event.metaKey ||
         event.target.matches('input, textarea, select, [contenteditable]')) return;
     const id = {p: 'done', t: 'pause', l: 'undo', s: 'session'}[event.key.toLowerCase()];
     if (id) {
@@ -1474,13 +1912,23 @@
   applySettings();
   rotateQuote();
   restoreSession();
+  showView('focus');
   render();
   window.addEventListener('pagehide', () => { pageActive = false; saveSession(); releaseWakeLock(); });
   window.addEventListener('pageshow', () => { pageActive = true; wakeBlocked = false; render(); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') saveSession();
-    else wakeBlocked = false;
+    else { wakeBlocked = false; render(); }
     syncWakeLock();
+  });
+  // Another tab's writes apply immediately instead of waiting for the render poll.
+  window.addEventListener('storage', event => {
+    if (event.key === 'pace-sessions' || event.key === 'pace-session') render();
+    else if (event.key === 'pace-presets') { presets = latestPresets(); renderPresets(); }
+    else if (event.key === 'pace-settings') { readExtras(); applySettings(); }
+    else if (event.key === 'pace-theme') {
+      try { applyTheme(localStorage.getItem('pace-theme')); } catch { applyTheme('mocha'); }
+    }
   });
   setInterval(render, 1000);
 </script>

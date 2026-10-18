@@ -129,8 +129,23 @@ async function main() {
     assert.equal(await evaluate('sessions.length'), 1);
     assert.ok(await evaluate('elapsed()') >= upgraded.time);
 
+    await evaluate(`(() => {
+      const id = sessionId; const before = elapsed();
+      el('sessions-tab').click();
+      if (!el('focus-view').hidden || el('sessions-view').hidden || state !== 'running' || sessionId !== id || elapsed() < before) throw Error('View navigation preserves the running session');
+      el('sessions-tab').dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowLeft',bubbles:true}));
+      if (currentView !== 'focus' || document.activeElement !== el('focus-tab')) throw Error('Keyboard view navigation');
+      el('open-settings').focus(); el('open-settings').click();
+      if (!el('options').open) throw Error('Settings opens as a dialog');
+      el('close-settings').dispatchEvent(new KeyboardEvent('keydown', {key:'s',bubbles:true}));
+      if (state !== 'running') throw Error('Shortcuts must not run behind settings');
+      el('close-settings').click();
+      if (document.activeElement !== el('open-settings')) throw Error('Settings restores focus');
+    })()`);
+
     const result = await evaluate(`(() => {
       const get = id => document.getElementById(id);
+      get('sessions-tab').click();
       get('history').open = true; renderHistory(true);
       const review = get('history-list').querySelector('button[data-action="edit"]');
       review.focus(); render();
@@ -172,7 +187,6 @@ async function main() {
     const originalId = await evaluate('sessionId');
     await evaluate(`(() => {
       const get = id => document.getElementById(id);
-      get('options').open = true;
       document.querySelector('.extras').open = true;
       get('notes').value = 'Resume at exercise 2.\\n<strong>Literal note</strong>';
       get('notes').dispatchEvent(new Event('input'));
@@ -189,6 +203,7 @@ async function main() {
       get('start-preset').click();
       if (sessionId === previous || checkpoints.length !== 1 || get('notes').value !== '') throw Error('Start preset');
       get('pause').click(); resumeSession(previous); get('pause').click();
+      get('open-settings').click();
       for (const id of ['show-quotes', 'show-sparkles']) {
         get(id).checked = false; get(id).dispatchEvent(new Event('change'));
       }
@@ -196,11 +211,12 @@ async function main() {
       if (!get('quote').hidden || get('quote').textContent !== quote) throw Error('Quote setting');
       celebrate(true);
       if (get('sparkles').childElementCount !== 0) throw Error('Sparkle setting');
+      get('close-settings').click();
     })()`);
     const downloads = path.join(profile, 'downloads');
     fs.mkdirSync(downloads);
     await send('Browser.setDownloadBehavior', {behavior: 'allow', downloadPath: downloads});
-    await evaluate('document.getElementById("export-backup").click()');
+    await evaluate('el("open-settings").click(); el("export-backup").click()');
     let backupPath;
     for (let attempt = 0; attempt < 100 && !backupPath; attempt++) {
       const name = fs.readdirSync(downloads).find(file => file.endsWith('.json'));
@@ -218,7 +234,6 @@ async function main() {
     assert.equal(await evaluate('document.getElementById("show-sparkles").checked'), false);
     assert.equal(await evaluate('document.getElementById("notes").value.endsWith("Edited")'), true);
     await evaluate(`(() => {
-      document.getElementById('options').open = true;
       document.querySelector('.extras').open = true;
       const originalConfirm = window.confirm; window.confirm = () => true;
       document.getElementById('preset').value = presets[0].id;
@@ -226,6 +241,7 @@ async function main() {
       document.getElementById('remove-preset').click(); window.confirm = originalConfirm;
     })()`);
     assert.equal(await evaluate('presets.length'), 0);
+    await evaluate('el("open-settings").click()');
     const upload = async contents => evaluate(`(() => {
       const files = new DataTransfer();
       files.items.add(new File([${JSON.stringify(contents)}], 'backup.json', {type:'application/json'}));
@@ -239,6 +255,7 @@ async function main() {
     await waitFor('document.getElementById("backup-status").textContent.includes("Imported 0 sessions and 0 presets")');
     assert.equal(await evaluate('sessionId'), originalId);
     assert.equal(await evaluate('state'), 'paused');
+    await evaluate('el("close-settings").click()');
 
     // Exercise the browser event wiring with a deterministic wake-lock sentinel.
     await evaluate(`(() => {
@@ -250,7 +267,9 @@ async function main() {
         return window.testWakeSentinel;
       }}});
       applySettings();
+      document.getElementById('open-settings').click();
       const toggle = document.getElementById('keep-awake'); toggle.checked = true; toggle.dispatchEvent(new Event('change'));
+      document.getElementById('close-settings').click();
       document.getElementById('pause').click();
     })()`);
     await waitFor('screenLock !== null');
@@ -258,15 +277,22 @@ async function main() {
     await evaluate('document.getElementById("pause").click()');
     await waitFor('window.testWakeSentinel.released');
     await evaluate(`(() => {
+      document.getElementById('open-settings').click();
       const toggle = document.getElementById('keep-awake'); toggle.checked = false; toggle.dispatchEvent(new Event('change'));
       if (window.originalWakeDescriptor) Object.defineProperty(navigator, 'wakeLock', window.originalWakeDescriptor);
       else delete navigator.wakeLock;
       document.getElementById('show-quotes').checked = true;
       document.getElementById('show-quotes').dispatchEvent(new Event('change'));
+      document.getElementById('close-settings').click();
     })()`);
 
     const managed = await evaluate(`(() => {
-      const action = (name, id) => [...el('history-list').querySelectorAll('button')].find(button => button.dataset.action === name && button.dataset.id === id);
+      const action = (name, id) => {
+        if (currentView !== 'sessions') el('sessions-tab').click();
+        const button = [...el('history-list').querySelectorAll('button')].find(button => button.dataset.action === name && button.dataset.id === id);
+        const menu = button?.closest('.session-menu'); if (menu) menu.open = true;
+        return button;
+      };
       el('history').open = true; renderHistory(true);
       const current = sessionId;
       const originalName = activityName;
@@ -282,7 +308,7 @@ async function main() {
       const before = elapsed();
       el('rename-activity').value = 'Geometry revision'; el('rename-form').requestSubmit();
       if (el('session-renamer').open || activityName !== 'Geometry revision' || state !== 'running' || elapsed() < before) throw Error('Rename current session');
-      if (document.activeElement !== action('rename', current)) throw Error('Rename restores focus');
+      if (document.activeElement !== action('rename', current).closest('.session-menu').querySelector('summary')) throw Error('Rename restores focus');
       el('pause').click();
       const archived = sessions.find(saved => saved.state === 'complete');
       const activeSnapshot = JSON.parse(localStorage.getItem('pace-session'));
@@ -320,6 +346,7 @@ async function main() {
     })()`);
 
     const cleaned = await evaluate(`(() => {
+      el('sessions-tab').click();
       const base = {version:1, state:'paused', goal:3, unit:'tasks', checkpoints:[0,5000], elapsed:10000, savedAt:Date.now(), notes:'Original cleanup note'};
       const alpha = {...base, id:'browser-cleanup-alpha', activity:'Cleanup Alpha', createdAt:1000};
       const beta = {...base, id:'browser-cleanup-beta', activity:'cleanup Beta', state:'stopped', createdAt:500};
@@ -327,7 +354,10 @@ async function main() {
       importBackup({version:1, sessions:[alpha,beta,complete]});
       const change = (id, value, type = 'change') => { el(id).value = value; el(id).dispatchEvent(new Event(type)); };
       const shown = () => [...el('history-list').querySelectorAll('article')].map(row => row.dataset.id).join(',');
-      const selectAll = () => { el('select-visible').checked = true; el('select-visible').dispatchEvent(new Event('change')); };
+      const selectAll = () => {
+        if (el('toggle-selection').getAttribute('aria-pressed') !== 'true') el('toggle-selection').click();
+        el('select-visible').checked = true; el('select-visible').dispatchEvent(new Event('change'));
+      };
       change('history-search', '  CLEANUP  ', 'input');
       if (el('history-list').querySelectorAll('article').length !== 3) throw Error('Search by name');
       change('history-filter', 'incomplete');
@@ -358,8 +388,10 @@ async function main() {
         el('undo-delete').click();
         if (shown() !== alpha.id + ',' + beta.id || sessions.length !== count || sessionId !== active || selectedSessionIds.size) throw Error('Undo entire batch');
         if (sessions.find(saved => saved.id === beta.id).notes !== base.notes) throw Error('Undo preserves session notes');
+        el('toggle-selection').click();
         change('history-search', 'cleanup alpha', 'input');
-        el('history-list').querySelector('button[data-action="rename"]').click();
+        const rename = el('history-list').querySelector('button[data-action="rename"]');
+        rename.closest('.session-menu').open = true; rename.click();
         el('rename-activity').value = 'Cleanup renamed'; el('rename-form').requestSubmit();
         if (shown() || document.activeElement !== el('history-search')) throw Error('Rename restores focus when the session leaves the search results');
         change('history-search', 'cleanup', 'input');
@@ -371,7 +403,11 @@ async function main() {
 
     await send('Emulation.setTimezoneOverride', {timezoneId:'Asia/Kolkata'});
     const forecast = await evaluate(`(() => {
-      const change = (id, value) => { el(id).value = value; el(id).dispatchEvent(new Event('change')); };
+      el('focus-tab').click();
+      const change = (id, value) => {
+        const details = el(id).closest('details'); if (details) details.open = true;
+        el(id).value = value; el(id).dispatchEvent(new Event('change'));
+      };
       const original = sessionId;
       const originalTime = elapsed();
       const originalDeadline = Math.floor((Date.now() + 3600000) / 60000) * 60000;
@@ -422,9 +458,42 @@ async function main() {
       return {deadline:originalDeadline, etaMode:'average'};
     })()`);
 
-    for (const [width, height] of [[320,640], [360,800], [412,915], [915,412]]) {
-      await send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor:1, mobile:true});
-      assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true);
+    for (const [width, height, mobile] of [
+      [2560,1440,false], [1920,1080,false], [1440,900,false], [1366,768,false],
+      [1024,768,true], [1024,600,true], [834,1112,true], [768,1024,true],
+      [390,844,true], [360,800,true], [320,640,true], [915,412,true],
+    ]) {
+      await send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor:1, mobile});
+      await send('Emulation.setTouchEmulationEnabled', {enabled:mobile});
+      await evaluate('el("focus-tab").click(); new Promise(resolve => requestAnimationFrame(resolve))');
+      assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true, `Focus layout fits ${width}×${height}`);
+      if (width <= 760 || mobile && height <= 700) {
+        assert.equal(await evaluate(`(() => {
+          const button = el('pause'); const rect = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.x + rect.width/2, rect.y + rect.height/2);
+          return rect.width >= 44 && rect.height >= 44 && rect.top >= 0 && rect.bottom <= innerHeight && button.contains(hit);
+        })()`), true, `The primary timer action stays visible and tappable at ${width}×${height}`);
+      }
+      await evaluate('el("sessions-tab").click()');
+      assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true, `Library layout fits ${width}×${height}`);
+      await evaluate('el("toggle-selection").click()');
+      assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true, `Bulk selection fits ${width}×${height}`);
+      await evaluate('el("toggle-selection").click()');
+      await evaluate(`(() => {
+        const summary = el('history-list').querySelector('.session-menu > summary');
+        summary.focus(); summary.click();
+        return new Promise(resolve => requestAnimationFrame(resolve));
+      })()`);
+      assert.equal(await evaluate(`(() => {
+        const menu = el('history-list').querySelector('.session-menu');
+        const rect = menu.querySelector('.menu-items').getBoundingClientRect();
+        return menu.open && rect.left >= 0 && rect.right <= innerWidth;
+      })()`), true, `Session actions remain on screen at ${width}×${height}`);
+      await evaluate(`el('history-list').querySelector('.session-menu > summary').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}))`);
+      assert.equal(await evaluate(`el('history-list').querySelector('.session-menu').open`), false);
+      await evaluate('el("open-settings").click()');
+      assert.equal(await evaluate('el("options").scrollWidth <= el("options").clientWidth && el("options").getBoundingClientRect().height <= innerHeight'), true, `Settings fits ${width}×${height}`);
+      await evaluate('el("close-settings").click()');
       await evaluate('editSession(sessionId)');
       assert.equal(await evaluate('document.getElementById("session-editor").scrollWidth <= document.getElementById("session-editor").clientWidth'), true);
       await evaluate('document.getElementById("session-editor").close()');
@@ -448,6 +517,7 @@ async function main() {
     assert.equal(await evaluate(`sessions.some(saved => [${JSON.stringify(managed.archived)}, ${JSON.stringify(managed.temporary)}].includes(saved.id))`), false, 'Deleted sessions stay deleted after reload');
     assert.equal(await evaluate(`sessions.some(saved => ${JSON.stringify(cleaned.removed)}.includes(saved.id))`), false, 'Bulk deletion survives an offline reload');
     await evaluate(`(() => {
+      el('sessions-tab').click();
       el('history').open = true; renderHistory(true);
       const originalConfirm = window.confirm;
       try {
@@ -461,6 +531,76 @@ async function main() {
     assert.equal(offlineImport.sessions, 0, 'Backup round trips work offline without duplication');
     assert.equal(offlineImport.presets, 0);
     assert.equal(await evaluate(`(() => {const before = el('quote').textContent; rotateQuote(); return el('quote').textContent !== before;})()`), true);
+    if (process.env.PACE_SCREENSHOT_DIR) {
+      const directory = path.resolve(process.env.PACE_SCREENSHOT_DIR);
+      fs.mkdirSync(directory, {recursive:true});
+      await evaluate(`(() => {
+        updateSavedSession(sessionId, {activity:'Reading · The Creative Act', unit:'pages', goal:24,
+          times:[78000,65000,72000,52000,62000,49000,46000,54000], current:27000,
+          notes:'Continue with the section on attention. Leave a little room to reflect.', deadline:Date.now()+3000000, etaMode:'recent'});
+        const current = sessions.find(saved => saved.id === sessionId);
+        const names = ['Sketchbook explorations', 'A little French, every day', 'Deep work · Chapter 08', 'Clearing the reading list'];
+        importBackup({version:1, sessions:names.map((activity, i) => ({...current, id:'visual-'+i, activity,
+          state:i === 2 ? 'complete' : i === 1 ? 'stopped' : 'paused', goal:i === 2 ? 8 : 24,
+          elapsed:i === 2 ? current.checkpoints[8] : current.elapsed, deadline:null, createdAt:Date.now()-(i+1)*86400000}))});
+        render();
+      })()`);
+      for (const [name, width, height, view] of [
+        ['focus-wide',2560,1440,'focus'], ['focus-desktop',1920,1080,'focus'], ['focus-laptop',1366,768,'focus'],
+        ['focus-tablet',834,1112,'focus'], ['focus-phone',390,844,'focus'], ['focus-small-phone',320,640,'focus'],
+        ['sessions-desktop',1440,1000,'sessions'], ['sessions-phone',390,844,'sessions'],
+      ]) {
+        await send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor:1, mobile:width < 1000});
+        await evaluate(`(() => {
+          const tab = el(${JSON.stringify(view + '-tab')});
+          if (tab) tab.click();
+          el('history').open = true; renderHistory(true);
+          if (!tab && ${JSON.stringify(view)} === 'sessions') el('history').scrollIntoView(); else window.scrollTo(0, 0);
+          return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        })()`);
+        const screenshot = await send('Page.captureScreenshot', {format:'png', captureBeyondViewport:false});
+        fs.writeFileSync(path.join(directory, `${name}.png`), Buffer.from(screenshot.data, 'base64'));
+      }
+    }
+    await evaluate(`(() => {
+      const total = 1000;
+      const checkpoints = [0];
+      for (let i = 1; i <= total; i++) checkpoints.push(checkpoints[i - 1] + i * 1000);
+      const id = 'windowed-editor';
+      importBackup({version:1, sessions: [{version:1, id, createdAt: Date.now() - 5000, state: 'complete',
+        goal: total, unit: 'units', activity: 'Many units', checkpoints, elapsed: checkpoints[total],
+        completedAt: checkpoints[total], savedAt: Date.now()}]});
+      editSession(id);
+      const list = document.getElementById('unit-times');
+      if (list.children.length !== 100) throw Error('Editor renders only a trailing window of units');
+      const earlier = document.getElementById('earlier-units');
+      if (earlier.hidden) throw Error('Hidden units offer to load');
+      earlier.click();
+      if (list.children.length !== 200) throw Error('Show earlier units loads one chunk');
+      const last = list.lastElementChild.querySelector('input');
+      last.value = '42';
+      document.getElementById('edit-form').requestSubmit();
+      const saved = sessions.find(item => item.id === id);
+      if (!saved || saved.checkpoints.length !== total + 1) throw Error('Hidden unit times survive a windowed save');
+      if (saved.checkpoints[total] - saved.checkpoints[total - 1] !== 42000) throw Error('Visible edit applies to its own unit');
+      editSession(id);
+      if (!document.getElementById('add-unit').disabled) throw Error('Add unit is capped at the goal');
+      document.getElementById('session-editor').close();
+    })()`);
+    await evaluate(`(() => {
+      importBackup({version:1, sessions: Array.from({length: 350}, (_, i) => ({version:1, id: 'cap-'+i,
+        createdAt: Date.now() - 10000 - i * 1000, state: 'stopped', goal: 1, unit: 'units',
+        activity: 'Cap ' + i, checkpoints: [0], elapsed: 0, savedAt: Date.now()}))});
+      el('history').open = true;
+      renderHistory(true);
+      const list = el('history-list');
+      if (list.children.length !== 300) throw Error('History renders a bounded window of sessions');
+      if (!el('history-results').textContent.includes('first 300 shown')) throw Error('History says when results are capped');
+      el('select-visible').checked = true; el('select-visible').dispatchEvent(new Event('change'));
+      if (selectedSessionIds.size !== 300) throw Error('Select all shown respects the render cap');
+      if (document.getElementById('goal').max !== '10000') throw Error('Goal input is capped');
+      if (document.getElementById('edit-goal').max !== '10000') throw Error('Edit goal input is capped');
+    })()`);
     assert.deepEqual(errors, []);
     console.log('Browser checks passed: deadlines/local time, recent-pace ETA/trends, uninterrupted upgrades, session CRUD, history search/filter/sort, bulk delete/undo, backups/download/import, presets, notes/charts, settings, wake lock, mobile layouts, and offline use.');
   } finally {

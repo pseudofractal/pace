@@ -318,9 +318,11 @@ assert.equal(historyUpgrade.context.document.documentElement.dataset.theme, 'mac
 const features = createApp(featureStorage);
 assert.equal(features.node('notes').value, '', 'Old sessions default to empty notes');
 const note = 'Continue at exercise 12.\n<img src=x onerror=alert(1)>';
+const historyBeforeNote = featureStorage.getItem('pace-sessions');
 features.node('notes').value = note;
 features.node('notes').handlers.input();
 assert.equal(JSON.parse(featureStorage.getItem('pace-session')).notes, note);
+assert.equal(featureStorage.getItem('pace-sessions'), historyBeforeNote, 'Typing notes does not rewrite history storage');
 const withNotes = createApp(featureStorage);
 assert.equal(withNotes.node('notes').value, note);
 const notedId = JSON.parse(featureStorage.getItem('pace-session')).id;
@@ -338,6 +340,35 @@ run(withNotes, 'startSession(presets[0])');
 assert.equal(withNotes.node('progress-text').textContent, '0 of 15 problems finished');
 assert.equal(withNotes.node('notes').value, '', 'Presets contain setup, not old progress or notes');
 assert.equal(JSON.parse(featureStorage.getItem('pace-sessions')).sessions.find(item => item.id === notedId).notes, note);
+
+// Pure clock ticks batch history writes; real changes flush immediately.
+const tickStorage = memoryStorage();
+const tickApp = createApp(tickStorage);
+run(tickApp, 'startSession({goal:5, unit:"units", activity:"Tick throttle"})');
+const tickId = run(tickApp, 'sessionId');
+const historyBeforeTicks = tickStorage.getItem('pace-sessions');
+const nowBeforeTicks = now;
+for (let i = 0; i < 4; i++) { now += 1000; tickApp.render(); }
+assert.equal(tickStorage.getItem('pace-sessions'), historyBeforeTicks, 'Pure clock ticks batch history writes');
+now += 1000;
+tickApp.render();
+assert.equal(JSON.parse(tickStorage.getItem('pace-sessions')).sessions.find(item => item.id === tickId).elapsed, 5000,
+  'Batched history writes flush on their interval');
+now = nowBeforeTicks;
+
+// Setups stop growing at the preset limit; existing setups still save.
+const presetCapStorage = memoryStorage();
+const presetCapApp = createApp(presetCapStorage);
+for (let i = 0; i < 500; i++) {
+  assert.equal(run(presetCapApp, `savePreset(${JSON.stringify({activity: `Setup ${i}`, unit: 'units', goal: 1})})`), '');
+}
+assert.equal(run(presetCapApp, 'presets.length'), 500, 'Preset storage stops at the limit');
+assert.match(run(presetCapApp, `savePreset(${JSON.stringify({activity: 'Setup 500', unit: 'units', goal: 1})})`),
+  /Preset limit/, 'New setups past the limit are refused');
+assert.equal(run(presetCapApp, `savePreset(${JSON.stringify({activity: 'Setup 499', unit: 'units', goal: 1})})`), '',
+  'Saving an existing setup still works at the limit');
+assert.equal(run(presetCapApp, 'presets.length'), 500);
+
 for (const id of ['show-quotes', 'show-sparkles']) {
   withNotes.node(id).checked = false;
   withNotes.node(id).handlers.change();
@@ -392,6 +423,14 @@ for (const invalid of ['invalid json', '{"version":2}', '{"version":1,"sessions"
   assert.throws(() => run(importedApp, `importBackup(${JSON.stringify(invalid)})`));
   assert.deepEqual(destination.data, beforeInvalid, 'Invalid imports do not mutate storage');
 }
+assert.throws(() => run(importedApp, `parseBackup(${JSON.stringify({version: 1, sessions: Array(10001).fill({})})})`),
+  /session list/, 'Backups with absurd session counts are rejected');
+assert.throws(() => run(importedApp, `parseBackup(${JSON.stringify({version: 1, sessions: JSON.parse(fullBackup).sessions, presets: Array(501).fill({})})})`),
+  /invalid preset/, 'Backups with absurd preset counts are rejected');
+assert.throws(() => run(importedApp, `importBackup(${JSON.stringify({version: 1, sessions: [{...legacy, goal: 10001}]})})`),
+  /invalid session/, 'Goals beyond the supported limit are rejected');
+assert.throws(() => run(importedApp, 'parseBackup("x".repeat(33554433))'), /too large/,
+  'Oversized backup files are rejected before parsing');
 const rawLegacy = run(importedApp, `parseBackup(${JSON.stringify(JSON.stringify({...legacy, state: 'running'}))})`);
 assert.equal(rawLegacy.sessions[0].state, 'paused');
 assert.equal(rawLegacy.sessions[0].notes, '');
@@ -428,6 +467,52 @@ assert.equal(run(setupTabA, 'createBackup().presets.length'), 2, 'Backups includ
 setupTabA.click('remove-preset');
 assert.equal(JSON.parse(setupStorage.getItem('pace-presets')).presets.length, 1);
 assert.equal(JSON.parse(setupStorage.getItem('pace-presets')).presets[0].activity, 'Reading');
+
+// Storage events from another tab apply immediately.
+const syncStorage = memoryStorage();
+const syncApp = createApp(syncStorage);
+syncStorage.setItem('pace-sessions', JSON.stringify({version: 1, sessions: [
+  {version: 1, id: 'other-tab', createdAt: wall, state: 'stopped', goal: 1, unit: 'units',
+    activity: 'From other tab', checkpoints: [0], elapsed: 0, savedAt: wall},
+]}));
+syncApp.listeners.storage({key: 'pace-sessions'});
+assert.equal(run(syncApp, 'sessions.some(saved => saved.id === "other-tab")'), true, 'Storage events sync history from another tab');
+run(syncApp, 'startSession({goal:2, unit:"units", activity:"Synced timer"})');
+assert.equal(run(syncApp, 'state'), 'running');
+const syncedId = run(syncApp, 'sessionId');
+syncStorage.setItem('pace-sessions', JSON.stringify({version: 1, sessions:
+  JSON.parse(syncStorage.getItem('pace-sessions')).sessions.map(saved =>
+    saved.id === syncedId ? {...saved, state: 'paused'} : saved)}));
+syncApp.listeners.storage({key: 'pace-sessions'});
+assert.equal(run(syncApp, 'state'), 'paused', 'A pause from another tab applies through storage events');
+syncStorage.setItem('pace-presets', JSON.stringify({version: 1, presets: [
+  {id: 'other-preset', name: 'Reading', activity: 'Reading', unit: 'pages', goal: 5},
+]}));
+syncApp.listeners.storage({key: 'pace-presets'});
+assert.equal(run(syncApp, 'presets.length'), 1, 'Storage events sync setups from another tab');
+syncStorage.setItem('pace-settings', JSON.stringify({version: 1, settings: {quotes: false, sparkles: true, awake: false}}));
+syncApp.listeners.storage({key: 'pace-settings'});
+assert.equal(syncApp.node('show-quotes').checked, false, 'Storage events sync settings from another tab');
+assert.equal(run(syncApp, 'settings.quotes'), false);
+syncStorage.setItem('pace-theme', 'latte');
+syncApp.listeners.storage({key: 'pace-theme'});
+assert.equal(syncApp.context.document.documentElement.dataset.theme, 'latte', 'Storage events sync the theme from another tab');
+syncApp.listeners.storage({key: 'pace-unknown'});
+syncApp.listeners.storage({key: null});
+
+// Becoming visible repaints without waiting for the next tick.
+const visStorage = memoryStorage();
+const visApp = createApp(visStorage);
+const nowBeforeVisible = now;
+run(visApp, 'startSession({goal:3, unit:"steps", activity:"Visible repaint"})');
+now += 5000;
+visApp.context.document.visibilityState = 'hidden';
+visApp.listeners.visibilitychange();
+assert.notEqual(visApp.node('total').textContent, '00:00:05', 'A hidden tab only flushes storage');
+visApp.context.document.visibilityState = 'visible';
+visApp.listeners.visibilitychange();
+assert.equal(visApp.node('total').textContent, '00:00:05', 'Becoming visible repaints immediately');
+now = nowBeforeVisible;
 
 // Session management preserves timing/state and stays deleted across stale tabs.
 const crudStorage = memoryStorage({
@@ -507,7 +592,7 @@ const browseRecords = [
 ];
 const browseStorage = memoryStorage({'pace-sessions': JSON.stringify({version: 1, sessions: browseRecords})});
 const browse = createApp(browseStorage);
-browse.node('history').open = true;
+browse.click('sessions-tab');
 browse.render();
 assert.equal(run(browse, 'visibleSessions().map(saved => saved.id).join(",")'), 'untitled,beta,done,alpha', 'Default order uses creation dates, not autosave order');
 browse.node('history-sort').value = 'oldest'; browse.node('history-sort').handlers.change();
@@ -527,6 +612,7 @@ for (const [status, id] of [['running', 'untitled'], ['paused', 'alpha'], ['stop
   assert.equal(run(browse, 'visibleSessions().map(saved => saved.id).join(",")'), id);
 }
 browse.node('history-filter').value = 'all'; browse.node('history-filter').handlers.change();
+browse.click('toggle-selection');
 const firstSelection = browse.node('history-list').querySelectorAll('input')[0];
 firstSelection.checked = true;
 browse.node('history-list').handlers.change({target: firstSelection});
@@ -547,7 +633,7 @@ assert.equal(JSON.parse(browseStorage.getItem('pace-sessions')).sessions.length,
 assert.equal(browse.node('delete-undo').hidden, true);
 browse.node('history-search').value = 'no match'; browse.node('history-search').handlers.input();
 assert.equal(browse.node('history-results').textContent, 'Showing 0 of 4 sessions');
-assert.match(browse.node('history-list').children[0].textContent, /No sessions match/);
+assert.match(browse.node('history-list').querySelectorAll('h3')[0].textContent, /No sessions match/);
 assert.equal(browse.node('select-visible').disabled, true);
 
 // Undo restores a whole batch and freezes a deleted running timer at deletion time.

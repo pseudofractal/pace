@@ -4,7 +4,7 @@ A progress timer for anything countable. Catppuccin themes, saved sessions, and 
 
 - **Use:** [pseudofractal.github.io/pace](https://pseudofractal.github.io/pace/) — set a goal and start.
 - **Keys:** `P` complete unit · `L` undo · `T` pause/resume · `S` start/stop.
-- **Forecast:** Live pace chart and recent-versus-average trends. Choose an ETA based on the last 5 completed units (default) or the whole session. Overlong current units use `≥` to mark a lower-bound estimate.
+- **Forecast:** Live pace chart and recent-versus-average trends. The default ETA tracks the pace trend across the last 5 completed units (damped Holt smoothing) and shows a ± range from recent pace variability; a whole-session average is also available. Overlong current units use `≥` to mark a lower-bound estimate.
 - **Deadline:** Set an optional local finish time to see required pace, estimated buffer, and whether you're on track. Breaks consume deadline time. Deadlines and ETA choices save with sessions and backups; completed sessions record whether the deadline was met. Restart clears the old absolute deadline.
 - **History:** Create, review, edit, rename, resume, restart, or delete sessions. Renaming keeps progress and timings; deletion asks for confirmation. Stored in this browser only; clearing site data erases them.
 - **Browse:** Search sessions by name, filter by status, and sort by newest, oldest, or name.

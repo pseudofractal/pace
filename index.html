@@ -860,14 +860,36 @@
     const average = done ? points[done] / done : null;
     const recentCount = Math.min(5, done);
     const recent = done ? times.slice(-5).reduce((sum, value) => sum + value, 0) / recentCount : null;
-    const pace = mode === 'average' ? average : recent;
     const current = Math.max(0, total - points[done]);
+    // Damped Holt smoothing forecasts a warming-up or tiring pace that flat means miss.
+    const window = times.slice(-5);
+    let forecast = null;
+    let band = null;
+    if (mode === 'recent' && window.length >= 3 && left) {
+      const alpha = 0.4, beta = 0.2, phi = 0.8;
+      let level = window[0], trend = 0, squaredErrors = 0;
+      for (let i = 1; i < window.length; i += 1) {
+        squaredErrors += (window[i] - (level + trend)) ** 2;
+        const previous = level;
+        level = alpha * window[i] + (1 - alpha) * (level + trend);
+        trend = beta * (level - previous) + (1 - beta) * trend;
+      }
+      const forecastUnit = step => Math.max(0, level + phi * (1 - phi ** step) / (1 - phi) * trend);
+      let rest = 0;
+      for (let step = 2; step <= left; step += 1) rest += forecastUnit(step);
+      forecast = { next: forecastUnit(1), remaining: Math.max(0, forecastUnit(1) - current) + rest };
+      // Uncertainty of the remaining sum from recent one-step forecast errors.
+      band = Math.sqrt(squaredErrors / (window.length - 1)) * Math.sqrt(left);
+    }
+    const pace = mode === 'average' ? average : recent;
+    const expectedNext = forecast ? forecast.next : pace;
     return {
-      times, average, recent, recentCount, left,
+      times, average, recent, recentCount, left, band,
+      forecastNext: forecast ? forecast.next : null,
       trend: done < 2 ? null : average === 0 ? 0 : (recent / average - 1) * 100,
       // An overlong current unit cannot consume the estimate for future units.
-      remaining: !left ? 0 : pace === null ? null : Math.max(0, pace - current) + pace * (left - 1),
-      overrun: left > 0 && pace !== null && current > pace,
+      remaining: !left ? 0 : pace === null ? null : forecast ? forecast.remaining : Math.max(0, pace - current) + pace * (left - 1),
+      overrun: left > 0 && expectedNext !== null && current > expectedNext,
     };
   }
   function deadlineOutlook(target, clock, metrics, sessionState, finishedAt = null) {
@@ -1575,7 +1597,7 @@
       text('estimate-note', 'Available after the first unit.');
       return;
     }
-    const { times, average, recent, recentCount, trend, remaining, overrun } = metrics;
+    const { times, average, recent, recentCount, trend, remaining, overrun, band } = metrics;
     text('last', duration(times[times.length - 1]));
     text('average', duration(average));
     text('recent-average', duration(recent));
@@ -1585,7 +1607,8 @@
     text('pace-trend-note', `Recent pace uses ${recentCount} completed unit${recentCount === 1 ? '' : 's'}. Less time per unit means faster pace.`);
     text('min', duration(times.reduce((a, b) => Math.min(a, b))));
     text('max', duration(times.reduce((a, b) => Math.max(a, b))));
-    text('eta', `${overrun ? '≥ ' : ''}${duration(Math.ceil(remaining / 1000) * 1000)}`);
+    const showBand = band !== null && band >= 1000 && !['stopped', 'complete'].includes(state);
+    text('eta', `${overrun ? '≥ ' : ''}${duration(Math.ceil(remaining / 1000) * 1000)}${showBand ? ` ± ${duration(Math.ceil(band / 1000) * 1000)}` : ''}`);
     if (state === 'stopped') {
       text('finish', 'Session stopped');
       text('estimate-note', 'Start fresh resets progress and timings.');
@@ -1595,8 +1618,8 @@
     } else {
       const finish = new Date(clock + remaining);
       text('finish', `${overrun ? 'After ' : ''}${finish.toLocaleString(undefined, {weekday: 'short', hour: 'numeric', minute: '2-digit', second: '2-digit'})}`);
-      const basis = etaMode === 'recent' ? `Based on the last ${recentCount} completed unit${recentCount === 1 ? '' : 's'}.` : 'Based on the whole-session average.';
-      text('estimate-note', `${basis}${state === 'paused' ? ' Assumes you resume now.' : ''}${overrun ? ' Current unit is over its usual time; this is a lower bound.' : ''}`);
+      const basis = etaMode === 'recent' ? band !== null ? `Based on the pace trend across the last ${recentCount} completed units.` : `Based on the last ${recentCount} completed unit${recentCount === 1 ? '' : 's'}.` : 'Based on the whole-session average.';
+      text('estimate-note', `${basis}${showBand ? ' The ± range reflects recent pace variability.' : ''}${state === 'paused' ? ' Assumes you resume now.' : ''}${overrun ? ' Current unit is over its usual time; this is a lower bound.' : ''}`);
     }
   }
 
